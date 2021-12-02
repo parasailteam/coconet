@@ -1,0 +1,1560 @@
+('executing ', 'mpirun -np 128  -x LD_LIBRARY_PATH=../../nccl-2/build/lib/ -x MASTER_ADDR=$PHILLY_CONTAINER_IP -x MASTER_PORT=$((PHILLY_CONTAINER_PORT_RANGE_START+25)) -hostfile ~/hostfile python optimbench.py')
+Warning: Permanently added '[10.184.185.59]:2296' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.18]:2295' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.40]:2227' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.30]:2237' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.34]:2264' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.22]:2225' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.13]:2274' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.43]:2279' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.39]:2265' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.41]:2297' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.42]:2295' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.36]:2256' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.48]:2232' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.54]:2287' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.44]:2253' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.23]:2222' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.29]:2274' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.57]:2260' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.53]:2292' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.27]:2284' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.35]:2284' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.33]:2252' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.38]:2296' (ECDSA) to the list of known hosts.
+Warning: Permanently added '[10.184.185.12]:2268' (ECDSA) to the list of known hosts.
+local_rank 10
+cuda:10
+local_rank 0
+cuda:0
+local_rank 6
+cuda:6
+local_rank 6
+cuda:6
+local_rank 3
+cuda:3
+local_rank 12
+cuda:12
+local_rank 15
+cuda:15
+local_rank 15
+cuda:15
+local_rank 2
+cuda:2
+local_rank 6
+cuda:6
+local_rank 11
+cuda:11
+local_rank 15
+cuda:15
+local_rank 13
+cuda:13
+local_rank 5
+cuda:5
+local_rank 10
+cuda:10
+local_rank 11
+cuda:11
+local_rank 14
+cuda:14
+local_rank 8
+cuda:8
+local_rank 14
+cuda:14
+local_rank 13
+cuda:13
+local_rank 7
+cuda:7
+local_rank 3
+cuda:3
+local_rank 2
+cuda:2
+local_rank 8
+cuda:8
+local_rank 0
+cuda:0
+local_rank 2
+cuda:2
+local_rank 4
+cuda:4
+local_rank 4
+cuda:4
+local_rank 2
+cuda:2
+local_rank 6
+cuda:6
+local_rank 1
+cuda:1
+local_rank 7
+cuda:7
+local_rank 9
+cuda:9
+local_rank 5
+cuda:5
+local_rank 9
+cuda:9
+local_rank 9
+cuda:9
+local_rank 13
+cuda:13
+local_rank 11
+cuda:11
+local_rank 12
+cuda:12
+local_rank 1
+cuda:1
+local_rank 10
+cuda:10
+local_rank 0
+cuda:0
+local_rank 6
+cuda:6
+local_rank 8
+cuda:8
+local_rank 7
+cuda:7
+local_rank 13
+cuda:13
+local_rank 1
+cuda:1
+local_rank 5
+cuda:5
+local_rank 6
+cuda:6
+local_rank 8
+cuda:8
+local_rank 11
+cuda:11
+local_rank 6
+cuda:6
+local_rank 14
+cuda:14
+local_rank 0
+cuda:0
+local_rank 13
+cuda:13
+local_rank 12
+cuda:12
+local_rank 4
+cuda:4
+local_rank 3
+cuda:3
+local_rank 3
+cuda:3
+local_rank 9
+cuda:9
+local_rank 0
+cuda:0
+local_rank 7
+cuda:7
+local_rank 4
+cuda:4
+local_rank 14
+cuda:14
+local_rank 0
+cuda:0
+local_rank 11
+cuda:11
+local_rank 7
+cuda:7
+local_rank 15
+cuda:15
+local_rank 2
+cuda:2
+local_rank 5
+cuda:5
+local_rank 7
+cuda:7
+local_rank 12
+cuda:12
+local_rank 15
+cuda:15
+local_rank 4
+cuda:4
+local_rank 2
+cuda:2
+local_rank 0
+cuda:0
+local_rank 10
+cuda:10
+local_rank 4
+cuda:4
+local_rank 10
+cuda:10
+local_rank 9
+cuda:9
+local_rank 11
+cuda:11
+local_rank 3
+cuda:3
+local_rank 8
+cuda:8
+local_rank 1
+cuda:1
+local_rank 3
+cuda:3
+local_rank 11
+cuda:11
+local_rank 14
+cuda:14
+local_rank 9
+cuda:9
+local_rank 5
+cuda:5
+local_rank 4
+cuda:4
+local_rank 5
+cuda:5
+local_rank 8
+cuda:8
+local_rank 15
+cuda:15
+local_rank 0
+cuda:0
+local_rank 10
+cuda:10
+local_rank 12
+cuda:12
+local_rank 8
+cuda:8
+local_rank 13
+cuda:13
+local_rank 14
+cuda:14
+local_rank 11
+cuda:11
+local_rank 1
+cuda:1
+local_rank 13
+cuda:13
+local_rank 10
+cuda:10
+local_rank 1
+cuda:1
+local_rank 7
+cuda:7
+local_rank 7
+cuda:7
+local_rank 15
+cuda:15
+local_rank 5
+cuda:5
+local_rank 1
+cuda:1
+local_rank 12
+cuda:12
+local_rank 12
+cuda:12
+local_rank 8
+cuda:8
+local_rank 4
+cuda:4
+local_rank 15
+cuda:15
+local_rank 13
+cuda:13
+local_rank 9
+cuda:9
+local_rank 9
+cuda:9
+local_rank 5
+cuda:5
+local_rank 12
+cuda:12
+local_rank 2
+cuda:2
+local_rank 10
+cuda:10
+local_rank 2
+cuda:2
+local_rank 6
+cuda:6
+local_rank 3
+cuda:3
+local_rank 1
+cuda:1
+local_rank 14
+cuda:14
+local_rank 3
+cuda:3
+local_rank 14
+cuda:14
+using: Namespace(fp16=False, times=1000)
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+fusedadam 1024 1024 142.14324951171875  ms 25.736093521118164  ms 0.14214324951171875  ms 0.028816000858783747  GBps
+fusedadam 2048 2048 172.70565032958984  ms 27.49323844909668  ms 0.17270565032958984  ms 0.04743330623153593  GBps
+fusedadam 4096 4096 202.03375816345215  ms 29.175758361816406  ms 0.20203375816345215  ms 0.08109535826554683  GBps
+fusedadam 8192 8192 209.1662883758545  ms 30.74812889099121  ms 0.2091662883758545  ms 0.15666004428552377  GBps
+fusedadam 16384 16384 217.2389030456543  ms 34.00063514709473  ms 0.2172389030456543  ms 0.3016770895138756  GBps
+fusedadam 32768 32768 231.25624656677246  ms 40.39812088012695  ms 0.23125624656677246  ms 0.5667825278058145  GBps
+fusedadam 65536 65536 249.90415573120117  ms 53.39169502258301  ms 0.24990415573120117  ms 1.048978154176692  GBps
+fusedadam 131072 131072 295.58801651000977  ms 61.010122299194336  ms 0.29558801651000977  ms 1.773711959605932  GBps
+fusedadam 262144 262144 373.2597827911377  ms 64.80860710144043  ms 0.3732597827911377  ms 2.8092391635633143  GBps
+fusedadam 524288 524288 532.360315322876  ms 73.63295555114746  ms 0.532360315322876  ms 3.9393469791753346  GBps
+fusedadam 1048576 1048576 743.7670230865479  ms 81.57896995544434  ms 0.7437670230865479  ms 5.639271263458441  GBps
+fusedadam 2097152 2097152 1019.8483467102051  ms 101.104736328125  ms 1.019848346710205  ms 8.225348432499509  GBps
+fusedadam 4194304 4194304 1580.4507732391357  ms 165.15135765075684  ms 1.5804507732391357  ms 10.615462552886147  GBps
+fusedadam 8388608 8388608 2170.607328414917  ms 347.2299575805664  ms 2.170607328414917  ms 15.45854543138536  GBps
+fusedadam 16777216 16777216 3764.906883239746  ms 641.3776874542236  ms 3.764906883239746  ms 17.824840316436205  GBps
+fusedadam 33554432 33554432 6812.4377727508545  ms 1238.114833831787  ms 6.8124377727508545  ms 19.7018648062899  GBps
+fusedadam 67108864 67108864 9873.619794845581  ms 2392.183303833008  ms 9.873619794845581  ms 27.187137197660164  GBps
+fusedadam 134217728 134217728 18080.238342285156  ms 4735.835552215576  ms 18.080238342285156  ms 29.693796167741503  GBps
+fusedadam 268435456 268435456 35949.65147972107  ms 9509.12857055664  ms 35.94965147972107  ms 29.86793417470792  GBps
+fusedadam 536870912 536870912 71899.61886405945  ms 18800.293684005737  ms 71.89961886405945  ms 29.867802944272146  GBps
+fusedadam 1073741824 1073741824 143692.28506088257  ms 40586.9517326355  ms 143.69228506088257  ms 29.890034069541162  GBps
+adam 1024 1024 295.5794334411621  ms 144.73319053649902  ms 0.2955794334411621  ms 0.01385752706916717  GBps
+adam 2048 2048 283.28561782836914  ms 128.49998474121094  ms 0.28328561782836914  ms 0.028917811157512376  GBps
+adam 4096 4096 319.35906410217285  ms 131.97946548461914  ms 0.31935906410217285  ms 0.05130275555529012  GBps
+adam 8192 8192 339.71714973449707  ms 131.21414184570312  ms 0.33971714973449707  ms 0.09645671413883444  GBps
+adam 16384 16384 336.1244201660156  ms 131.27660751342773  ms 0.3361244201660156  ms 0.19497542001747759  GBps
+adam 32768 32768 351.47929191589355  ms 131.23440742492676  ms 0.35147929191589355  ms 0.37291528409976593  GBps
+adam 65536 65536 366.5585517883301  ms 131.29138946533203  ms 0.3665585517883301  ms 0.7151490497795713  GBps
+adam 131072 131072 394.589900970459  ms 121.63996696472168  ms 0.394589900970459  ms 1.3286908730065314  GBps
+adam 262144 262144 483.7770462036133  ms 133.0862045288086  ms 0.4837770462036133  ms 2.1674777838853325  GBps
+adam 524288 524288 620.1174259185791  ms 138.29517364501953  ms 0.6201174259185791  ms 3.3818627123620844  GBps
+adam 1048576 1048576 819.504976272583  ms 151.43680572509766  ms 0.819504976272583  ms 5.11809460764628  GBps
+adam 2097152 2097152 1166.0497188568115  ms 247.28870391845703  ms 1.1660497188568115  ms 7.194039726045425  GBps
+adam 4194304 4194304 1863.9566898345947  ms 444.5934295654297  ms 1.8639566898345947  ms 9.00086149613744  GBps
+adam 8388608 8388608 2708.7552547454834  ms 842.44704246521  ms 2.7087552547454834  ms 12.387398950575472  GBps
+adam 16777216 16777216 4753.883600234985  ms 1625.9822845458984  ms 4.753883600234985  ms 14.116640129068957  GBps
+adam 33554432 33554432 8811.259984970093  ms 3205.838680267334  ms 8.811259984970093  ms 15.232523864798386  GBps
+adam 67108864 67108864 13876.228094100952  ms 6377.572774887085  ms 13.876228094100952  ms 19.344987281818824  GBps
+adam 134217728 134217728 26046.59914970398  ms 12722.507953643799  ms 26.04659914970398  ms 20.61193896808987  GBps
+adam 268435456 268435456 51690.90723991394  ms 25251.739025115967  ms 51.69090723991394  ms 20.77235400447554  GBps
+adam 536870912 536870912 102642.65990257263  ms 50512.29238510132  ms 102.64265990257263  ms 20.921940741192497  GBps
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+adam 1073741824 1073741824 204504.26506996155  ms 101416.66841506958  ms 204.50426506996155  ms 21.00184704964798  GBps
+</result>
+('executing ', 'mpirun -np 128 -x NCCL_ALGO=Ring -x LD_LIBRARY_PATH=../../nccl-2/build/lib/ -x MASTER_ADDR=$PHILLY_CONTAINER_IP -x MASTER_PORT=$((PHILLY_CONTAINER_PORT_RANGE_START+25)) -hostfile ~/hostfile python optimbench.py')
+local_rank 4
+cuda:4
+local_rank 12
+cuda:12
+local_rank 8
+cuda:8
+local_rank 11
+cuda:11
+local_rank 7
+cuda:7
+local_rank 15
+cuda:15
+local_rank 13
+cuda:13
+local_rank 1
+cuda:1
+local_rank 2
+cuda:2
+local_rank 9
+cuda:9
+local_rank 0
+cuda:0
+local_rank 7
+cuda:7
+local_rank 9
+cuda:9
+local_rank 14
+cuda:14
+local_rank 5
+cuda:5
+local_rank 3
+cuda:3
+local_rank 4
+cuda:4
+local_rank 14
+cuda:14
+local_rank 9
+cuda:9
+local_rank 15
+cuda:15
+local_rank 9
+cuda:9
+local_rank 10
+cuda:10
+local_rank 0
+cuda:0
+local_rank 0
+cuda:0
+local_rank 8
+cuda:8
+local_rank 8
+cuda:8
+local_rank 9
+cuda:9
+local_rank 4
+cuda:4
+local_rank 11
+cuda:11
+local_rank 14
+cuda:14
+local_rank 5
+cuda:5
+local_rank 8
+cuda:8
+local_rank 10
+cuda:10
+local_rank 12
+cuda:12
+local_rank 5
+cuda:5
+local_rank 2
+cuda:2
+local_rank 0
+cuda:0
+local_rank 4
+cuda:4
+local_rank 6
+cuda:6
+local_rank 9
+cuda:9
+local_rank 9
+cuda:9
+local_rank 3
+cuda:3
+local_rank 15
+cuda:15
+local_rank 7
+cuda:7
+local_rank 10
+cuda:10
+local_rank 9
+cuda:9
+local_rank 11
+cuda:11
+local_rank 2
+cuda:2
+local_rank 1
+cuda:1
+local_rank 13
+cuda:13
+local_rank 2
+cuda:2
+local_rank 4
+cuda:4
+local_rank 5
+cuda:5
+local_rank 3
+cuda:3
+local_rank 4
+cuda:4
+local_rank 6
+cuda:6
+local_rank 3
+cuda:3
+local_rank 11
+cuda:11
+local_rank 8
+cuda:8
+local_rank 8
+cuda:8
+local_rank 2
+cuda:2
+local_rank 13
+cuda:13
+local_rank 15
+cuda:15
+local_rank 6
+cuda:6
+local_rank 0
+cuda:0
+local_rank 1
+cuda:1
+local_rank 12
+cuda:12
+local_rank 13
+cuda:13
+local_rank 6
+cuda:6
+local_rank 6
+cuda:6
+local_rank 10
+cuda:10
+local_rank 2
+cuda:2
+local_rank 7
+cuda:7
+local_rank 2
+cuda:2
+local_rank 3
+cuda:3
+local_rank 3
+cuda:3
+local_rank 6
+cuda:6
+local_rank 13
+cuda:13
+local_rank 10
+cuda:10
+local_rank 5
+cuda:5
+local_rank 8
+cuda:8
+local_rank 3
+cuda:3
+local_rank 7
+cuda:7
+local_rank 12
+cuda:12
+local_rank 11
+cuda:11
+local_rank 1
+cuda:1
+local_rank 1
+cuda:1
+local_rank 13
+cuda:13
+local_rank 10
+cuda:10
+local_rank 8
+cuda:8
+local_rank 10
+cuda:10
+local_rank 14
+cuda:14
+local_rank 7
+cuda:7
+local_rank 5
+cuda:5
+local_rank 15
+cuda:15
+local_rank 15
+cuda:15
+local_rank 10
+cuda:10
+local_rank 0
+cuda:0
+local_rank 13
+cuda:13
+local_rank 0
+cuda:0
+local_rank 12
+cuda:12
+local_rank 12
+cuda:12
+local_rank 4
+cuda:4
+local_rank 14
+cuda:14
+local_rank 7
+cuda:7
+local_rank 1
+cuda:1
+local_rank 14
+cuda:14
+local_rank 6
+cuda:6
+local_rank 5
+cuda:5
+local_rank 7
+cuda:7
+local_rank 11
+cuda:11
+local_rank 1
+cuda:1
+local_rank 11
+cuda:11
+local_rank 14
+cuda:14
+local_rank 5
+cuda:5
+local_rank 0
+cuda:0
+local_rank 12
+cuda:12
+local_rank 11
+cuda:11
+local_rank 4
+cuda:4
+local_rank 2
+cuda:2
+local_rank 15
+cuda:15
+local_rank 15
+cuda:15
+local_rank 13
+cuda:13
+local_rank 12
+cuda:12
+local_rank 1
+cuda:1
+local_rank 14
+cuda:14
+local_rank 3
+cuda:3
+local_rank 6
+cuda:6
+using: Namespace(fp16=False, times=1000)
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+fusedadam 1024 1024 146.13914489746094  ms 25.3753662109375  ms 0.14613914489746094  ms 0.02802808243386105  GBps
+fusedadam 2048 2048 164.72816467285156  ms 28.123140335083008  ms 0.16472816467285156  ms 0.049730415052393916  GBps
+fusedadam 4096 4096 202.77070999145508  ms 29.298782348632812  ms 0.20277070999145508  ms 0.08080062451174747  GBps
+fusedadam 8192 8192 209.51509475708008  ms 30.666351318359375  ms 0.20951509475708008  ms 0.15639923241803885  GBps
+fusedadam 16384 16384 212.23735809326172  ms 33.788204193115234  ms 0.21223735809326172  ms 0.3087863540555478  GBps
+fusedadam 32768 32768 233.25681686401367  ms 40.16566276550293  ms 0.23325681686401367  ms 0.5619214124679307  GBps
+fusedadam 65536 65536 254.16827201843262  ms 53.293466567993164  ms 0.2541682720184326  ms 1.0313797151714867  GBps
+fusedadam 131072 131072 300.5654811859131  ms 61.2034797668457  ms 0.3005654811859131  ms 1.744338697615461  GBps
+fusedadam 262144 262144 367.6185607910156  ms 64.75543975830078  ms 0.3676185607910156  ms 2.852347818738391  GBps
+fusedadam 524288 524288 539.9889945983887  ms 73.78840446472168  ms 0.5399889945983887  ms 3.883693965947835  GBps
+fusedadam 1048576 1048576 744.5409297943115  ms 81.45904541015625  ms 0.7445409297943115  ms 5.633409571128248  GBps
+fusedadam 2097152 2097152 1016.6568756103516  ms 100.01659393310547  ms 1.0166568756103516  ms 8.251169299340926  GBps
+fusedadam 4194304 4194304 1582.7007293701172  ms 163.76996040344238  ms 1.5827007293701172  ms 10.600371686615063  GBps
+fusedadam 8388608 8388608 2170.842170715332  ms 333.97912979125977  ms 2.170842170715332  ms 15.45687312170797  GBps
+fusedadam 16777216 16777216 3742.237091064453  ms 638.1328105926514  ms 3.742237091064453  ms 17.932819959547604  GBps
+fusedadam 33554432 33554432 6807.900667190552  ms 1239.5517826080322  ms 6.807900667190552  ms 19.714995056675562  GBps
+fusedadam 67108864 67108864 10064.131259918213  ms 2383.354425430298  ms 10.064131259918213  ms 26.67249155116658  GBps
+fusedadam 134217728 134217728 18352.884769439697  ms 4710.2320194244385  ms 18.352884769439697  ms 29.252671650506436  GBps
+fusedadam 268435456 268435456 36079.362869262695  ms 9491.952419281006  ms 36.079362869262695  ms 29.76055391806154  GBps
+fusedadam 536870912 536870912 71950.91009140015  ms 18760.629177093506  ms 71.95091009140015  ms 29.846511257078255  GBps
+fusedadam 1073741824 1073741824 143473.91629219055  ms 40532.19556808472  ms 143.47391629219055  ms 29.935527007244453  GBps
+adam 1024 1024 326.1754512786865  ms 139.04666900634766  ms 0.3261754512786865  ms 0.012557658720000819  GBps
+adam 2048 2048 299.27873611450195  ms 124.31597709655762  ms 0.29927873611450195  ms 0.027372475927811318  GBps
+adam 4096 4096 337.09001541137695  ms 128.4325122833252  ms 0.33709001541137695  ms 0.04860422810211492  GBps
+adam 8192 8192 337.052583694458  ms 129.79435920715332  ms 0.337052583694458  ms 0.09721925178803721  GBps
+adam 16384 16384 341.19439125061035  ms 130.5372714996338  ms 0.34119439125061035  ms 0.1920781867479856  GBps
+adam 32768 32768 352.66780853271484  ms 130.0373077392578  ms 0.35266780853271484  ms 0.3716585319917036  GBps
+adam 65536 65536 373.1553554534912  ms 130.27453422546387  ms 0.3731553554534912  ms 0.7025063319308913  GBps
+adam 131072 131072 393.45836639404297  ms 119.36235427856445  ms 0.39345836639404297  ms 1.3325120134182966  GBps
+adam 262144 262144 484.1117858886719  ms 130.7535171508789  ms 0.4841117858886719  ms 2.1659790787269415  GBps
+adam 524288 524288 612.0414733886719  ms 132.95674324035645  ms 0.6120414733886719  ms 3.4264867516064896  GBps
+adam 1048576 1048576 823.0397701263428  ms 146.54016494750977  ms 0.8230397701263428  ms 5.096113398452353  GBps
+adam 2097152 2097152 1166.7721271514893  ms 247.67160415649414  ms 1.1667721271514893  ms 7.189585528135311  GBps
+adam 4194304 4194304 1868.729829788208  ms 443.8965320587158  ms 1.868729829788208  ms 8.97787135013596  GBps
+adam 8388608 8388608 2678.251266479492  ms 843.5604572296143  ms 2.678251266479492  ms 12.528485441213524  GBps
+adam 16777216 16777216 4731.231451034546  ms 1624.8109340667725  ms 4.731231451034546  ms 14.184227657119958  GBps
+adam 33554432 33554432 8776.16024017334  ms 3205.594062805176  ms 8.77616024017334  ms 15.293445462129466  GBps
+adam 67108864 67108864 13928.755760192871  ms 6374.256610870361  ms 13.928755760192871  ms 19.27203410136348  GBps
+adam 134217728 134217728 26120.603561401367  ms 12722.092628479004  ms 26.120603561401367  ms 20.55354160320164  GBps
+adam 268435456 268435456 51739.009857177734  ms 25254.22739982605  ms 51.739009857177734  ms 20.753041601762312  GBps
+adam 536870912 536870912 102672.23525047302  ms 50513.588428497314  ms 102.67223525047302  ms 20.915914051750484  GBps
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+</result>
+adam 1073741824 1073741824 204587.8484249115  ms 101428.542137146  ms 204.5878484249115  ms 20.993266848770602  GBps
+</result>
+</result>
+</result>
+</result>
+('executing ', 'mpirun -np 128 -x NCCL_ALGO=Tree -x LD_LIBRARY_PATH=../../nccl-2/build/lib/ -x MASTER_ADDR=$PHILLY_CONTAINER_IP -x MASTER_PORT=$((PHILLY_CONTAINER_PORT_RANGE_START+25)) -hostfile ~/hostfile python optimbench.py')
+local_rank 0
+cuda:0
+local_rank 12
+cuda:12
+local_rank 9
+cuda:9
+local_rank 4
+cuda:4
+local_rank 1
+cuda:1
+local_rank 9
+cuda:9
+local_rank 12
+cuda:12
+local_rank 15
+cuda:15
+local_rank 10
+cuda:10
+local_rank 6
+cuda:6
+local_rank 6
+cuda:6
+local_rank 5
+cuda:5
+local_rank 5
+cuda:5
+local_rank 13
+cuda:13
+local_rank 2
+cuda:2
+local_rank 7
+cuda:7
+local_rank 1
+cuda:1
+local_rank 6
+cuda:6
+local_rank 5
+cuda:5
+local_rank 8
+cuda:8
+local_rank 8
+cuda:8
+local_rank 14
+cuda:14
+local_rank 7
+cuda:7
+local_rank 2
+cuda:2
+local_rank 14
+cuda:14
+local_rank 3
+cuda:3
+local_rank 3
+cuda:3
+local_rank 2
+cuda:2
+local_rank 3
+cuda:3
+local_rank 5
+cuda:5
+local_rank 2
+cuda:2
+local_rank 10
+cuda:10
+local_rank 4
+cuda:4
+local_rank 4
+cuda:4
+local_rank 13
+cuda:13
+local_rank 13
+cuda:13
+local_rank 6
+cuda:6
+local_rank 12
+cuda:12
+local_rank 12
+cuda:12
+local_rank 15
+cuda:15
+local_rank 3
+cuda:3
+local_rank 1
+cuda:1
+local_rank 2
+cuda:2
+local_rank 7
+cuda:7
+local_rank 0
+cuda:0
+local_rank 9
+cuda:9
+local_rank 8
+cuda:8
+local_rank 13
+cuda:13
+local_rank 4
+cuda:4
+local_rank 4
+cuda:4
+local_rank 15
+cuda:15
+local_rank 0
+cuda:0
+local_rank 0
+cuda:0
+local_rank 10
+cuda:10
+local_rank 7
+cuda:7
+local_rank 14
+cuda:14
+local_rank 10
+cuda:10
+local_rank 0
+cuda:0
+local_rank 6
+cuda:6
+local_rank 8
+cuda:8
+local_rank 15
+cuda:15
+local_rank 7
+cuda:7
+local_rank 3
+cuda:3
+local_rank 5
+cuda:5
+local_rank 12
+local_rank 13
+cuda:12
+cuda:13
+local_rank 15
+cuda:15
+local_rank 15
+cuda:15
+local_rank 2
+cuda:2
+local_rank 14
+cuda:14
+local_rank 9
+cuda:9
+local_rank 14
+cuda:14
+local_rank 11
+cuda:11
+local_rank 13
+cuda:13
+local_rank 12
+cuda:12
+local_rank 4
+cuda:4
+local_rank 10
+cuda:10
+local_rank 14
+cuda:14
+local_rank 1
+cuda:1
+local_rank 6
+cuda:6
+local_rank 9
+cuda:9
+local_rank 9
+cuda:9
+local_rank 5
+cuda:5
+local_rank 8
+cuda:8
+local_rank 7
+cuda:7
+local_rank 11
+cuda:11
+local_rank 5
+cuda:5
+local_rank 11
+cuda:11
+local_rank 10
+cuda:10
+local_rank 11
+cuda:11
+local_rank 11
+cuda:11
+local_rank 10
+cuda:10
+local_rank 0
+cuda:0
+local_rank 3
+cuda:3
+local_rank 14
+cuda:14
+local_rank 11
+cuda:11
+local_rank 1
+cuda:1
+local_rank 1
+cuda:1
+local_rank 11
+cuda:11
+local_rank 0
+cuda:0
+local_rank 8
+cuda:8
+local_rank 8
+cuda:8
+local_rank 4
+cuda:4
+local_rank 3
+cuda:3
+local_rank 12
+cuda:12
+local_rank 1
+cuda:1
+local_rank 15
+cuda:15
+local_rank 12
+cuda:12
+local_rank 2
+cuda:2
+local_rank 6
+cuda:6
+local_rank 1
+cuda:1
+local_rank 8
+cuda:8
+local_rank 13
+cuda:13
+local_rank 3
+cuda:3
+local_rank 9
+cuda:9
+local_rank 0
+cuda:0
+local_rank 7
+cuda:7
+local_rank 6
+cuda:6
+local_rank 15
+cuda:15
+local_rank 13
+cuda:13
+local_rank 7
+cuda:7
+local_rank 2
+cuda:2
+local_rank 11
+cuda:11
+local_rank 9
+cuda:9
+local_rank 14
+cuda:14
+local_rank 5
+cuda:5
+local_rank 4
+cuda:4
+local_rank 10
+cuda:10
+using: Namespace(fp16=False, times=1000)
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+<result>
+fusedadam 1024 1024 141.65306091308594  ms 25.717496871948242  ms 0.14165306091308594  ms 0.02891571825979237  GBps
+fusedadam 2048 2048 163.5587215423584  ms 27.498483657836914  ms 0.1635587215423584  ms 0.05008598699445348  GBps
+fusedadam 4096 4096 206.71319961547852  ms 29.66904640197754  ms 0.20671319961547852  ms 0.0792595733145102  GBps
+fusedadam 8192 8192 213.13238143920898  ms 31.147480010986328  ms 0.21313238143920898  ms 0.15374482178038398  GBps
+fusedadam 16384 16384 211.4565372467041  ms 34.66629981994629  ms 0.2114565372467041  ms 0.3099265733437214  GBps
+fusedadam 32768 32768 231.40668869018555  ms 40.83728790283203  ms 0.23140668869018555  ms 0.5664140511317859  GBps
+fusedadam 65536 65536 261.67988777160645  ms 53.558349609375  ms 0.26167988777160645  ms 1.0017735876927563  GBps
+fusedadam 131072 131072 296.6752052307129  ms 61.61642074584961  ms 0.2966752052307129  ms 1.767212058022447  GBps
+fusedadam 262144 262144 366.6090965270996  ms 64.72468376159668  ms 0.3666090965270996  ms 2.860201806046811  GBps
+fusedadam 524288 524288 530.4524898529053  ms 75.3488540649414  ms 0.5304524898529053  ms 3.9535152348545695  GBps
+fusedadam 1048576 1048576 744.5204257965088  ms 82.82113075256348  ms 0.7445204257965088  ms 5.633564714511111  GBps
+fusedadam 2097152 2097152 1016.2491798400879  ms 111.18602752685547  ms 1.016249179840088  ms 8.254479478468058  GBps
+fusedadam 4194304 4194304 1582.1332931518555  ms 178.15709114074707  ms 1.5821332931518555  ms 10.60417353747558  GBps
+fusedadam 8388608 8388608 2189.6328926086426  ms 338.0918502807617  ms 2.1896328926086426  ms 15.324227231544997  GBps
+fusedadam 16777216 16777216 3751.262664794922  ms 637.9280090332031  ms 3.751262664794922  ms 17.889673423780042  GBps
+fusedadam 33554432 33554432 6805.28712272644  ms 1240.675449371338  ms 6.80528712272644  ms 19.722566525044364  GBps
+fusedadam 67108864 67108864 9927.608489990234  ms 2387.8371715545654  ms 9.927608489990234  ms 27.039287082146412  GBps
+fusedadam 134217728 134217728 18074.445247650146  ms 4738.505601882935  ms 18.074445247650146  ms 29.70331341537569  GBps
+fusedadam 268435456 268435456 35939.31341171265  ms 9473.069906234741  ms 35.93931341171265  ms 29.876525789445573  GBps
+fusedadam 536870912 536870912 72200.13618469238  ms 18744.80104446411  ms 72.20013618469238  ms 29.7434847284305  GBps
+fusedadam 1073741824 1073741824 143693.59731674194  ms 40100.35443305969  ms 143.69359731674194  ms 29.889761104196307  GBps
+adam 1024 1024 299.6940612792969  ms 122.15805053710938  ms 0.2996940612792969  ms 0.013667271158178786  GBps
+adam 2048 2048 303.62677574157715  ms 119.07362937927246  ms 0.30362677574157715  ms 0.026980492678855095  GBps
+adam 4096 4096 330.6922912597656  ms 132.72714614868164  ms 0.3306922912597656  ms 0.04954454770501447  GBps
+adam 8192 8192 345.06845474243164  ms 130.05590438842773  ms 0.34506845474243164  ms 0.09496086805285901  GBps
+adam 16384 16384 365.3264045715332  ms 131.23726844787598  ms 0.3653264045715332  ms 0.1793902635558543  GBps
+adam 32768 32768 360.32867431640625  ms 129.9424171447754  ms 0.36032867431640625  ms 0.36375678468737427  GBps
+adam 65536 65536 369.3857192993164  ms 133.09383392333984  ms 0.3693857192993164  ms 0.7096755134368973  GBps
+adam 131072 131072 405.70664405822754  ms 120.7265853881836  ms 0.40570664405822754  ms 1.2922834951767599  GBps
+adam 262144 262144 582.1480751037598  ms 132.04240798950195  ms 0.5821480751037598  ms 1.801218701638936  GBps
+adam 524288 524288 621.7505931854248  ms 128.0839443206787  ms 0.6217505931854248  ms 3.3729794920751544  GBps
+adam 1048576 1048576 851.9952297210693  ms 140.21754264831543  ms 0.8519952297210693  ms 4.922919581806993  GBps
+adam 2097152 2097152 1180.7734966278076  ms 248.5942840576172  ms 1.1807734966278076  ms 7.104332900388751  GBps
+adam 4194304 4194304 1889.14155960083  ms 443.800687789917  ms 1.88914155960083  ms 8.88086756375471  GBps
+adam 8388608 8388608 2739.826440811157  ms 846.7364311218262  ms 2.7398264408111572  ms 12.24691881945114  GBps
+adam 16777216 16777216 5259.1259479522705  ms 1630.7241916656494  ms 5.2591259479522705  ms 12.760459563842536  GBps
+adam 33554432 33554432 83419.50750350952  ms 5472.095727920532  ms 83.41950750350952  ms 1.6089489379250215  GBps
+adam 67108864 67108864 14038.78664970398  ms 6375.742673873901  ms 14.03878664970398  ms 19.12098692700485  GBps

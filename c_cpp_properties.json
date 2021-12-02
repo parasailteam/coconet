@@ -1,0 +1,22 @@
+{
+    "env": {
+      "myDefaultIncludePath": ["${workspaceFolder}", "${workspaceFolder}/src"]
+    },
+    "configurations": [
+        {
+          "name": "default",
+          "intelliSenseMode": "clang-x64",
+          "includePath": ["${myDefaultIncludePath}"],
+          "compilerPath": "/usr/bin/clang",
+          "cStandard": "c11",
+          "cppStandard": "c++17",
+        //   "compileCommands": "/path/to/compile_commands.json",
+          "browse": {
+            "path": ["${workspaceFolder}"],
+            "limitSymbolsToIncludedHeaders": true,
+            "databaseFilename": ""
+          }
+        }
+      ],
+    "version": 1
+}
