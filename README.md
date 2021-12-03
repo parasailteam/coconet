@@ -4,14 +4,45 @@ CoCoNet is a DSL and a compiler to co-optimize computation and communication for
 CoCoNet exposes optimizations across the abstraction boundary of communication and computation routines.
 For more details please refer to the paper https://arxiv.org/abs/2105.05720 .
 
-# Code Structure
+# Directory Structure
+* `examples/` 
+    * `sgd/` contains Parameter Update using Stochastic Gradient Descent (SGD) optimizer
+    * `adam/` contains Parameter Update using Adam Optimizer
+    * `lamb/` contains Parameter Update using LAMB Optimizer
+* `src/` contains the source of code CoCoNet
+* `nccl-src/` contains modified NCCL source cloned from `https://github.com/NVIDIA/nccl/`
 
-# Examples
+# CoCoNet Example
+The key parts of a distributed machine learning program can be written and optimized in CoCoNet with only few lines of code. This section uses the SGD example in `examples/sgd/sgd.cpp`. 
+First we declare the input tensors in our program.
+Each tensor can have one of three layouts:
+1. <i>Local</i>: A Local tensor is present on all nodes of distributed system and each tensor contains different elements.
+2. <i>Replicated</i>: A Replicated tensor is present on all nodes of distributed system and but tensor contains same elements on nodes.
+3. <i>Sliced</i>: A Sliced tensor is divided on all nodes of distributed system and i<sup>th</sup> node contains i<sup>th</sup> part of the tensor.
 
+```
+Variable N(Int32, "N");    //Length of g and w
+Variable lr(Float32, "lr");  //Learning rate
+Tensor g(Float32, N, Local, "g"); //Gradient
+Tensor w(Float32, N, Replicated, "w"); //Weights (parameters)
+```
 
-# Installation
+Now we perform the operations on the tensors to produce new tensors.
+CoCoNet supports communication operations and computation operations.
+In SGD, first do an AllReduce and then parameter update.
+```
+Stage g1 = AllReduce(Summation, g);
+Stage w1 = Update(w, w - lr * g1);
+```
 
-## Prerequisites
+Finally create the program and generate code.
+```
+Pipeline pipeline({g,w,lr}, {w1});
+
+pipeline.codegen("sgd-ar-c.cu");
+```
+
+# Prerequisites
 
 <b>Linux Installation</b>: We recommend using Ubuntu 20.04 as the Linux OS.
 
@@ -19,7 +50,7 @@ For more details please refer to the paper https://arxiv.org/abs/2105.05720 .
 
 Execute following commands to install dependencies.
 ```
-sudo apt update && sudo apt install gcc linux-headers-$(uname -r) make g++ git python3-dev wget unzip python3-pip cmake openmpi* libopenmpi* libmetis-dev 
+sudo apt update && sudo apt install gcc linux-headers-$(uname -r) make g++ git python3-dev wget unzip python3-pip cmake openmpi* libopenmpi*
 ```
 
 <b>Install CUDA</b>: In our experiments we used CUDA 11.3 on Ubuntu 20.04. We cannot use CUDA 11.5 because currently PyTorch only supports upto 11.3. CUDA 11.3 toolkit can be downloaded from https://developer.nvidia.com/cuda-11.3.0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=20.04&target_type=runfile_local
@@ -71,3 +102,18 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 ```
 
+# Building Examples
+
+`examples/` directory contains several examples. To run an example, say `sgd`, do
+```
+cd examples/sgd
+make 
+```
+This will generate three programs for SGD: 
+1. `sgd-ar-c`: that performs an AllReduce and a weight update.
+2. `sgd-rs-c-ag`: that performs a ReduceScatter, perform <i>sliced</i> weight updates, and then an AllGather to gather all updated weights.
+3. `sgd-fuse-rs-c-ag`: that fuses all operations in previous program in a single FusedAllReduce call.
+
+# Experiments
+
+To 
