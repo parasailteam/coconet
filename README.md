@@ -81,10 +81,9 @@ Restart the shell and activate the Anaconda environment by
 source /path/to/conda/bin/activate 
 ```
 This activation is needed after every login to shell.
-Anaconda installs mpich but we need to install openmpi.
+Anaconda installs mpich but we need to remove it and any C/C++ compilers.
 ```
-conda remove mpich
-conda install -c conda-forge openmpi
+conda remove mpich openmpi* c-compiler compilers cxx-compiler
 ```
 
 <b>Install PyTorch</b> Install PyTorch using pip for CUDA 11.3. The instructions are available at https://pytorch.org/get-started/locally/
