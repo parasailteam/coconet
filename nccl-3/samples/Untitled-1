@@ -1,0 +1,4 @@
+Size        FusedAdam       AllReduceFusedWithAdam
+1024        1891            36
+4096        16319           48
+16384       341517          61

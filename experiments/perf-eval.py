@@ -18,7 +18,7 @@ assert "NPROC" in os.environ, "Set NPROC to number of processes"
 nranks = os.environ.get("NPROC")
 nccl_path = sys.argv[1]
 resultsDir = sys.argv[2]
-
+os.environ["PATH"] = "/usr/local/cuda/bin:"+(os.environ.get("PATH") if "PATH" in os.environ else "")
 resultsDir = os.path.abspath(resultsDir)
 if not os.path.exists(resultsDir):
     print("Making ", resultsDir)
@@ -74,9 +74,9 @@ def new_application_dir():
         return appDir
 
 nchannels = 32
-def eval_binary(binary, epochs):
+def eval_binary(binary):
     make_binary(binary)
-    print ("Running on ", nranks, "ranks ")
+    print ("Running on ", nranks, "ranks")
     algo = "Ring"
     proto = "Simple"
     channels = nchannels
@@ -103,14 +103,14 @@ def eval_binary(binary, epochs):
         f.write(command)
 
 #Perf eval FusedAdam
-try:
-    print("In '%s'"%os.getcwd())
-    # eval_binary("python3 optimbench.py --optimizer FusedAdam", epochs, pythonpath)
-    eval_binary("python3 optimbench.py --optimizer FusedAdam --fp16", epochs)
-    # eval_binary("python3 optimbench.py --optimizer FusedLAMB", epochs, pythonpath)
-    eval_binary("python3 optimbench.py --optimizer FusedAdam --fp16", epochs)
-except Exception as e:
-    print (e)
+# try:
+#     print("In '%s'"%os.getcwd())
+#     # eval_binary("python3 optimbench.py --optimizer FusedAdam", epochs, pythonpath)
+#     eval_binary("python3 optimbench.py --optimizer FusedAdam --fp16")
+#     # eval_binary("python3 optimbench.py --optimizer FusedLAMB", epochs, pythonpath)
+#     eval_binary("python3 optimbench.py --optimizer FusedLAMB --fp16")
+# except Exception as e:
+#     print (e)
 
 # sys.exit(0)
 
@@ -129,17 +129,15 @@ except Exception as e:
 #     print (e)
     
 #Perf eval Adam FP16
-# try:
-#     os.chdir(nccl_path)
-#     print("In parent dir: %s"%nccl_path)
-#     checkout_branch("mixed-precision-allgather-fp16weights")
-#     compile_nccl(os.path.join(nccl_path, "nccl-2/"))
-#     os.chdir(os.path.join(nccl_path, "accc-dsl/example/"))
-#     eval_binary("./allreduce-adamf16", epochs,ldLibraryPath)
-#     eval_binary("./reducescatter-adam-allgatherf16", epochs,ldLibraryPath)
-#     eval_binary("./test-adamf16", epochs,ldLibraryPath)
-# except Exception as e:
-#     print (e)
+try:
+    print("In parent dir: %s"%nccl_path)
+    # compile_nccl(os.path.join(nccl_path))
+    os.chdir("../examples/adam")
+    eval_binary("adam-ar-c")
+    eval_binary("adam-rs-c-ag")
+    # eval_binary("./", epochs,ldLibraryPath)
+except Exception as e:
+    print (e)
 
 # try:
 #     #Perf eval LAMB FP32
