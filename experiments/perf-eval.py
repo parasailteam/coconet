@@ -9,12 +9,12 @@ FULL_PERF_EVAL = "1000"
 epochs = ""
 
 nccl_path = ""
-print (""" This script must be copied to the parent directory of nccl directory. 
-Takes 5 command line args:
+print ("""Takes 2 command line args:
     <path to nccl repository> <path to results directory>
 """)
 
-assert len(sys.argv) >= 4, "Provide <path to nccl repository> <start # of ranks> <end # of ranks>"
+assert len(sys.argv) >= 3, "Provide <path to nccl repository> <start # of ranks> <end # of ranks>"
+assert "NPROC" in os.environ, "Set NPROC to number of processes"
 nranks = os.environ.get("NPROC")
 nccl_path = sys.argv[1]
 resultsDir = sys.argv[2]
@@ -39,7 +39,7 @@ assert os.path.exists(nccl_path), "Path to nccl '%s' is invalid"%nccl_path
 
 mpiargs = "-mca btl_tcp_if_include enp134s0f1"
 if "MPI_ARGS" in os.environ:
-    mpiargs += os.environ.get("MPI_ARGS") #" -hostfile /job/hostfile -x MASTER_ADDR=worker-0 -x MASTER_PORT=10000 "
+    mpiargs += " " + os.environ.get("MPI_ARGS") #" -hostfile /job/hostfile -x MASTER_ADDR=worker-0 -x MASTER_PORT=10000 "
 
 def compile_nccl(path):
     print("Compiling nccl at '%s'"%path)
@@ -76,7 +76,7 @@ def new_application_dir():
 nchannels = 32
 def eval_binary(binary, epochs):
     make_binary(binary)
-    print ("Running on ", nranks, " ranks ")
+    print ("Running on ", nranks, "ranks ")
     algo = "Ring"
     proto = "Simple"
     channels = nchannels
@@ -89,16 +89,18 @@ def eval_binary(binary, epochs):
     storeOutFile = os.path.join(appDir, "stdout.txt")
     envVars = "-x NCCL_ALGO=" + algo + " -x NCCL_PROTO=" + proto + \
         " -x NCCL_MIN_NCHANNELS=%d -x NCCL_NTHREADS=%d -x NCCL_LL128_NTHREADS=%d -x NCCL_MAX_NCHANNELS=%d -x NCCL_BUFFSIZE=4194304"%(channels, nthreads, nthreads, channels)   
-    command = "mpirun -np " + str(ranks) +" " + envVars + " " + binary #+ " " + (epochs if "python" not in binary else ("--times " + epochs if epochs != "" else ""))
+    command = "mpirun -np " + str(ranks) +" " + mpiargs + " " + envVars + " " + binary #+ " " + (epochs if "python" not in binary else ("--times " + epochs if epochs != "" else ""))
     command += " &> " + storeOutFile
     
     print("starting at ", str(datetime.datetime.now()))
-    s, o = subprocess.getstatusoutput(c)
-    
+    print(command)
+    s, o = subprocess.getstatusoutput(command)
+    print (s)
+    print (o)
     print("done at ", str(datetime.datetime.now()))
     print("Storing results in  ", appDir)
     with open(os.path.join(appDir, "json.json"), "w") as f:
-        f.write(c)
+        f.write(command)
 
 #Perf eval FusedAdam
 try:
