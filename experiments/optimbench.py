@@ -18,9 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 assert (torch.cuda.is_available())
 local_rank = int(os.environ['RANK']) % 16 #max(int(os.environ['OMPI_COMM_WORLD_SIZE']), 16)
-print("local_rank", local_rank)
 device = torch.device("cuda", local_rank)
-print(device)
 torch.cuda.set_device(device)
 torch.distributed.init_process_group(backend='nccl', init_method='env://')
 from apex.optimizers import FusedAdam, FusedLAMB
@@ -29,17 +27,12 @@ import apex
 import amp_C
 import apex_C, sys
 
-print(apex.__path__)
-
 parser = argparse.ArgumentParser(description='benchmark some optimizers')
 parser.add_argument('--optimizer', default=False,type=str)
 parser.add_argument('--fp16',action='store_true',default=False)
 parser.add_argument('--times',default=1000,type=int)
 
 args = parser.parse_args()
-if torch.distributed.get_rank() == 0:
-    print("using:", args)
-
 #DummyAllReduce.dummyAllReduce.argtypes = [c_ulonglong, c_ulonglong, c_int]
 dtype = torch.float16 if args.fp16 else torch.float32
 #LP_c_char = POINTER(c_char)
@@ -94,7 +87,8 @@ def take_optimizer_step(device, optimizer, overflow_buf):
     
     return (t1-t0)
 
-print("<result>")
+if os.environ['RANK'] == 0:
+    print("<result>")
 for name, baseline in [(args.optimizer, baselines[args.optimizer])]:
     for i in range(10, 32):
         if (i == 31):
@@ -147,5 +141,6 @@ for name, baseline in [(args.optimizer, baselines[args.optimizer])]:
             if torch.distributed.get_rank() == 0:
                 print(name + ": {SZ: %ld, Epochs: %d, Total: %f, AllReduce: %f, %s: %f, %s-CTime: %f}"%(size, epochs, (t1-t0)*1000.0, (t1-t0)*1000.0 - step_time*1000, name, step_time*1000, name, optimizerCTime*1000))
                 #print(name, size, split_size, (t1-t0)*1000.0, " ms", step_time*1000, " ms", mean_time, " ms", size*4 / mean_time * 1000 / 1000.**3, " GBps")
-            
-print("</result>")
+
+if os.environ['RANK'] == 0:      
+    print("</result>")
