@@ -18,6 +18,8 @@ assert "NPROC" in os.environ, "Set NPROC to number of processes"
 nranks = os.environ.get("NPROC")
 nccl_path = sys.argv[1]
 resultsDir = sys.argv[2]
+cudaLibPath = "/usr/local/cuda/lib64"
+
 os.environ["PATH"] = "/usr/local/cuda/bin:"+(os.environ.get("PATH") if "PATH" in os.environ else "")
 resultsDir = os.path.abspath(resultsDir)
 if not os.path.exists(resultsDir):
@@ -83,11 +85,11 @@ def eval_binary(binary):
     ranks = nranks
     nthreads = 512
     appDir = new_application_dir()
-    ldLibraryPath = "-x LD_LIBRARY_PATH=%s:$LD_LIBRARY_PATH"%(os.path.join(nccl_path, "build/lib"))
+    ldLibraryPath = "-x LD_LIBRARY_PATH=%s:%s:$LD_LIBRARY_PATH"%(os.path.join(nccl_path, "build/lib"), cudaLibPath)
     # pythonpath = ' -x PYTHONPATH=\\"../../:$PYTHONPATH\\" '
 
     storeOutFile = os.path.join(appDir, "stdout.txt")
-    envVars = "-x NCCL_ALGO=" + algo + " -x NCCL_PROTO=" + proto + \
+    envVars = ldLibraryPath + " -x NCCL_ALGO=" + algo + " -x NCCL_PROTO=" + proto + \
         " -x NCCL_MIN_NCHANNELS=%d -x NCCL_NTHREADS=%d -x NCCL_LL128_NTHREADS=%d -x NCCL_MAX_NCHANNELS=%d -x NCCL_BUFFSIZE=4194304"%(channels, nthreads, nthreads, channels)   
     command = "mpirun -np " + str(ranks) +" " + mpiargs + " " + envVars + " " + binary #+ " " + (epochs if "python" not in binary else ("--times " + epochs if epochs != "" else ""))
     command += " &> " + storeOutFile
