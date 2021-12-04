@@ -107,8 +107,8 @@ def get_time(d):
         return d["Time"]
     raise Exception("Time not found in " + str(d))
 
-for d in os.listdir("../results"):
-    full_path = os.path.join("../results", d)
-    if os.path.isdir(full_path):
-        process_dir(full_path)
-    
+def process_results_dir(results_dir):
+    for d in os.listdir(results_dir):
+        full_path = os.path.join(results_dir, d)
+        if os.path.isdir(full_path):
+            process_dir(full_path)

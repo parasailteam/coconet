@@ -8,8 +8,11 @@ parser.add_argument('--ranks', type=int,required=True)
 parser.add_argument('--channels', type=str,required=True)
 parser.add_argument('--protocol', type=str,required=False,default="minimum")
 parser.add_argument('--scatteredptrs', action='store_true', default=False, required=False)
+parser.add_argument('--results-dir', type=str, required=True)
 
 args = parser.parse_args()
+
+process_results_dir(args.results_dir)
 
 optimizer = args.optimizer.lower()
 

@@ -4,20 +4,19 @@ import os
 import math
 import random
 import datetime
+import shutil
 
 FULL_PERF_EVAL = "1000"
 epochs = 1
 
-nccl_path = ""
-print ("""Takes 2 command line args:
-    <path to nccl repository> <path to results directory>
-""")
+if len(sys.argv) < 2:
+    print("Results directory not specified")
+    sys.exit(0)
 
-assert len(sys.argv) >= 3, "Provide <path to nccl repository> <start # of ranks> <end # of ranks>"
+nccl_path = os.path.abspath("../nccl")
+resultsDir = os.path.abspath(sys.argv[1])
 assert "NPROC" in os.environ, "Set NPROC to number of processes"
 nranks = os.environ.get("NPROC")
-nccl_path = sys.argv[1]
-resultsDir = sys.argv[2]
 cudaLibPath = "/usr/local/cuda/lib64"
 
 os.environ["PATH"] = "/usr/local/cuda/bin:"+(os.environ.get("PATH") if "PATH" in os.environ else "")
@@ -26,8 +25,9 @@ if not os.path.exists(resultsDir):
     print("Making ", resultsDir)
     os.mkdir(resultsDir)
 else:
-    print("results dir ", resultsDir, " already exists. Create a new dir.")
-    sys.exit(0)
+    print("results dir ", resultsDir, " already exists. Deleting this directory.")
+    shutil.rmtree(resultsDir)
+    os.mkdir(resultsDir)
 
 #Run nvprof with mpi on single machine
 #sudo PYTHON_PATH="/home/parasail/.pyenv/versions/myvenv/lib/:$PYTHON_PATH" /usr/local/cuda/bin/nvprof  --profile-child-processes mpirun -np 4 -x NCCL_ALGO=Ring -x MASTER_ADDR=127.0.0.1 -x MASTER_PORT=10000 --allow-run-as-root /home/parasail/.pyenv/shims/python optimbench.p
@@ -35,7 +35,7 @@ else:
 parent_dir = os.getcwd()
 nccl_path = os.path.join(parent_dir, nccl_path)
 #Check that current directory is not same as nccl_path
-print ("Current dir", parent_dir, "NCCL path", nccl_path)
+print ("Current dir", parent_dir, "NCCL path", nccl_path, "Results Dir", resultsDir)
 assert os.path.exists(nccl_path), "Path to nccl '%s' is invalid"%nccl_path
 
 
@@ -53,13 +53,19 @@ def compile_nccl(path):
     else:
         print("nccl compiled succesfully")
 
+def execute_command(c):
+    s, o = subprocess.getstatusoutput(c)
+    if s != 0:
+        raise Exception("Command '%s' unsuccessful:\n"%c +o)
+    return (s, o)
+
 def make_binary(binary):
     if "python" in binary:
         return
     print("make " + binary)
     s, o = subprocess.getstatusoutput("make "+ binary)
     if s != 0:
-        raise Exception("make unsuccessful.\n" +o )
+        raise Exception("make unsuccessful.\n" +o)
     else:
         print("make successful")
 
@@ -110,6 +116,7 @@ def eval_binary(binary):
     with open(os.path.join(appDir, "json.json"), "w") as f:
         f.write(command)
 
+
 #Perf eval FusedAdam
 try:
     eval_binary("python3 optimbench.py --optimizer FusedAdam")
@@ -119,22 +126,6 @@ try:
 except Exception as e:
     print (e)
 
-# sys.exit(0)
-
-#Perf eval Adam FP32
-# try:
-# if False:
-#     os.chdir(nccl_path)
-#     print("In parent dir: %s"%nccl_path)    
-#     checkout_branch("accc-dsl-moments-distributed")
-#     compile_nccl(os.path.join(nccl_path, "nccl-2/"))
-#     os.chdir(os.path.join(nccl_path, "accc-dsl/example/"))
-#     eval_binary("./allreduce-adam", epochs, ldLibraryPath)
-#     eval_binary("./reducescatter-adam-allgather", epochs, ldLibraryPath)
-#     eval_binary("./test-adam", epochs, ldLibraryPath)
-# except Exception as e:
-#     print (e)
-    
 #Perf eval Adam FP16
 try:
     currDir = os.getcwd()
@@ -188,6 +179,3 @@ except Exception as e:
 #     eval_binary("./test-lambf16", epochs, ldLibraryPath)
 # except Exception as e:
 #     print (e)
-    
-#Switch back to original branch
-os.chdir(nccl_path)
