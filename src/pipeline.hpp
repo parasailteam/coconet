@@ -422,7 +422,7 @@ namespace ACCCDSL {
         const std::set<PipelineStage*>& parents () {return parents_;}
 
         void print(std::ostream& os) {
-            SingeStagePrintVisitor printer(os);
+            SingleStagePrintVisitor printer(os);
             if (type() == Single) {
                 for (auto s : stages()) {
                     printer.print(*s);
@@ -477,6 +477,7 @@ namespace ACCCDSL {
         {
             for (auto arg : args) {
                 arguments_.push_back(arg.impl());
+                ASSERT(arg.impl()->type() == TensorNode || arg.impl()->type() == VariableNode, "Invalid argument " << arg.impl()->name() << "Argument can only be Tensor or Variable");
             }
             for (auto stage : output) {
                 stageOutputs_.insert(AstNodeImpl::asStageImpl(stage.impl()));
@@ -598,7 +599,7 @@ namespace ACCCDSL {
             ASSERT(topoOrder_.size() > 0, "Create DAG before printing.");
             os << "Pipeline: " << name() << ":" << std::endl;
             for (auto ps : topoOrder_) {
-                SingeStagePrintVisitor printer(os);
+                SingleStagePrintVisitor printer(os);
                 ps->print(os);
             }
         }

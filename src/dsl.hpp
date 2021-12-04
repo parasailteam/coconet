@@ -257,10 +257,18 @@ public:
 
 class ReduceStage : public ContinuousExpression {
 public:
-    ReduceStage(ContinuousExpression definition, ReduceOperation op) : 
-        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::ReduceTensorImpl>(new ACCCDSLImpl::ReduceTensorImpl(ACCCDSLImpl::AstNodeImpl::asStageImpl(definition.impl()), op)))
+    ReduceStage(Stage definition, ReduceOperation op) : 
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::ReduceTensorImpl>(new ACCCDSLImpl::ReduceTensorImpl(definition.impl(), op)))
     {
     }
+};
+
+class Norm : public ContinuousExpression {
+public:
+    Norm(Stage in) : 
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::NormImpl>(new ACCCDSLImpl::NormImpl(in.impl()))) {}
+    Norm(Tensor in) : 
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::NormImpl>(new ACCCDSLImpl::NormImpl(in.impl()))) {}
 };
 
 // class ScatteredTensor : public ScatteredExpression {

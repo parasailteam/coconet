@@ -61,6 +61,17 @@ public:
         // ReduceImpl* a = new ReduceImpl(clone(node.arg()), node.root());
         // addToMap(node, a);
     }
+    virtual void visit(NormImpl& node)
+    {
+        checkMap
+        auto cloneArg = clone(node.arg());
+        NormImpl* a;
+        if (cloneArg->type() == TensorNode)
+            a = new NormImpl(AstNodeImpl::asTensorImpl(cloneArg));
+        else 
+            a = new NormImpl(AstNodeImpl::asStageImpl(cloneArg));
+        addToMap(node, a);
+    }
     virtual void visit(BroadcastImpl& node)
     {
         ASSERT(false, "to implement");
@@ -272,6 +283,9 @@ class VisitChildrenVisitor : public AstVisitor {
     virtual void visit(ReduceTensorImpl& node) {
         visitChildren(node);
     }
+    virtual void visit(NormImpl& node) {
+        visitChildren(node);
+    }
     virtual void visit(CastImpl& node) {
         visitChildren(node);
     }
@@ -336,6 +350,9 @@ public:
     virtual void visit(ReduceScatterImpl& node) {
         visitChildren(node);
     }
+    virtual void visit(NormImpl& node) {
+        visitChildren(node);
+    }
     void visit(BinaryPointwiseOp& node) {
         node.operand(0)->accept(*this);
         node.operand(1)->accept(*this);
@@ -385,12 +402,12 @@ public:
     virtual void visit(ConstFloat16& node) {}
 };
 
-class SingeStagePrintVisitor : public AstVisitor {
+class SingleStagePrintVisitor : public AstVisitor {
 private:
     std::ostream& os_;
     int nameCounter;
 public:
-    SingeStagePrintVisitor(std::ostream& os) : os_(os), nameCounter(0) {}
+    SingleStagePrintVisitor(std::ostream& os) : os_(os), nameCounter(0) {}
     
     void visit(TensorImpl& node) {
         os_ << node.name();
@@ -450,7 +467,11 @@ public:
     void visit(ReduceTensorImpl& node) {
         visitChildren(node);
     }
-
+    void visit(NormImpl& node) {
+        os_<<"Norm(";
+        node.arg()->accept(*this);
+        os_ << ")";
+    }
     void visit(StageImpl& node) {
         os_ << node.name();
     }
@@ -577,6 +598,11 @@ public:
     }
 
     std::set<ExpressionImpl*> inputs(ExpressionImpl& node) {
+        node.accept(*this);
+        return inputs_;
+    }
+
+    std::set<ExpressionImpl*> inputs(NormImpl& node) {
         node.accept(*this);
         return inputs_;
     }

@@ -81,7 +81,8 @@ class NumElemGen : public AstVisitor
 
         void visit(StageImpl& node) {
         }
-
+        void visit(NormImpl& node) {
+        }
         virtual void visit(ScatterImpl& node) {
             visitChildren(node);
         }
@@ -655,6 +656,9 @@ class PointwiseOpCodegen : public AstVisitor
         void visit(ReduceTensorImpl& node) {
             visitChildren(node);
         }
+        void visit(NormImpl& node) {
+            visitChildren(node);
+        }
         void visit(MatMulImpl& node) {
             ASSERT(false, "TODO: Implement");
             visitChildren(node);
@@ -1094,6 +1098,63 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
     return CFunc({funcName, codeStream.str(), redOpInputs, true});
 }
 
+
+CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<NormImpl> reduceTensor)
+{
+    std::stringstream codeStream;
+    static int nameCounter = 0;
+    std::string funcName = "redOpFunc" + std::to_string(nameCounter++);    
+
+    codeStream << "__global__ void " << funcName << "(";
+
+    //Print arguments of CUDA Kernel
+    //Add output to arguments too.
+    std::set<std::shared_ptr<ExpressionImpl>> redOpInputs;
+    redOpInputs.insert(reduceTensor->arg());
+    redOpInputs.insert(output);
+
+    for (auto it : pipeline.explicitStoreLocations()) {
+        redOpInputs.erase(it.first);
+        redOpInputs.insert(it.second);
+    }
+
+    int ii = 0;
+    for (auto iter : redOpInputs) {
+        codeStream << elemTypeToCType(iter->elemType()) << " ";
+        if (iter->type() == TensorNode || iter->type() == StageNode)
+            codeStream << "* ";
+        codeStream << iter->name();
+        if (ii != redOpInputs.size() - 1)
+            codeStream << ", ";
+        ii++;
+    }
+
+
+    codeStream << ") {" << std::endl;
+
+    //Function body
+    //Iterator initialization from threadIdx and blockIdx
+
+    codeStream << iteratorInit(reduceTensor->arg()->dims(), indent(1)) << std::endl;
+    
+    //Print assignment to output stage
+    std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
+    std::string inputName;
+    if (reduceTensor->arg()->type() == TensorNode || reduceTensor->arg()->type() == VariableNode) {
+        inputName = reduceTensor->arg()->name();
+    } else {
+        std::shared_ptr<StageImpl> inputStage = AstNodeImpl::asStageImpl(reduceTensor->arg());
+        inputName = pipeline.explicitStoreLocations().count(inputStage) == 0 ? reduceTensor->arg()->name() : pipeline.explicitStoreLocations().at(inputStage)->name();
+    }
+
+    codeStream << indent(1);
+    //TODO: Improve this by using NVIDIA CUB, maybe?
+    codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output->dims()) << "] * " << inputName << "[" << iteratorAccessString(output->dims()) << "]" << ");" << std::endl;
+    codeStream << "}";
+
+    return CFunc({funcName, codeStream.str(), redOpInputs, true});
+}
+
 CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
 {
     std::stringstream codeStream;
@@ -1212,24 +1273,27 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
         auto stageDef = output->definition();
         if (stageDef->type() == UpdateNode)
             stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
-        std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
-        PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
+        if (stageDef->type() == NormNode) {
+            
+        } else {    
+            std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
+            PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
                                         pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
-        binOpCodegen.print(*binOpNode);
-        
-        //Print assignment to output stage
-        //If stored in a register then emit declaration
-        
-        if (pipeStage->getStorageLocation(output) == Register) {
-            codeStream << indent(1) << elemTypeToCType(output->elemType()) << " " << output->name() << ";" << std::endl;
+            binOpCodegen.print(*binOpNode);
+            //Print assignment to output stage
+            //If stored in a register then emit declaration
+            
+            if (pipeStage->getStorageLocation(output) == Register) {
+                codeStream << indent(1) << elemTypeToCType(output->elemType()) << " " << output->name() << ";" << std::endl;
+            }
+            std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : 
+                            pipeline.explicitStoreLocations().at(output)->name();
+            codeStream << indent(1) << name;
+            if (pipeStage->getStorageLocation(output) == Memory)
+                codeStream << "[" << iteratorAccessString(output->dims()) << "]" ;
+            
+            codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
         }
-        std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : 
-                           pipeline.explicitStoreLocations().at(output)->name();
-        codeStream << indent(1) << name;
-        if (pipeStage->getStorageLocation(output) == Memory)
-            codeStream << "[" << iteratorAccessString(output->dims()) << "]" ;
-        
-        codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
     }
 
     codeStream << "}";
@@ -3642,6 +3706,8 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
         totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
     } else if (stageDef->type() == ReduceTensorNode) {
         totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asReduceTensorImpl(stageDef)->arg()) << ";";
+    } else if (stageDef->type() == NormNode) {
+        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asNormImpl(stageDef)->arg()) << ";";
     } else {
         ASSERT(false, "Not implemented for node type\n");
     }
@@ -3820,6 +3886,13 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                     }
                     case ReduceTensorNode: {
                         CFunc cfunc = generateReduceCUDA(pipeline_, outStage, AstNodeImpl::asReduceTensorImpl(stageDef));
+                        subFunctions.push_back(cfunc);
+                        funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                        pipelineStageName = cfunc.name;
+                        break;
+                    }
+                    case NormNode: {
+                        CFunc cfunc = generateNormCUDA(pipeline_, outStage, AstNodeImpl::asNormImpl(stageDef));
                         subFunctions.push_back(cfunc);
                         funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
                         pipelineStageName = cfunc.name;

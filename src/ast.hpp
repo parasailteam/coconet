@@ -60,6 +60,7 @@ enum AstNodeType {
     BroadcastNode,
     AllGatherNode,
     ReduceTensorNode,
+    NormNode,
     ReduceScatterNode,
     FusedAllReduceNone,
     StageNode,
@@ -120,6 +121,7 @@ class PowerImpl;
 class ReduceTensorImpl;
 class StageImpl;
 class UpdateImpl;
+class NormImpl;
 class FusedNode;
 class TensorImpl;
 class UnaryPointwiseOp;
@@ -203,6 +205,7 @@ public:
     asChild(ConstUInt32);
     asChild(ConstInt32);
     asChild(IteImpl);
+    asChild(NormImpl);
 };
 
 class AstVisitor {
@@ -220,6 +223,7 @@ public:
     virtual void visit(UnaryPointwiseOp& node) = 0;
     virtual void visit(PowerImpl& node) = 0;
     virtual void visit(ReduceTensorImpl& node) = 0;
+    virtual void visit(NormImpl& node) = 0;
     virtual void visit(StageImpl& node) = 0;
     virtual void visit(UpdateImpl& node) = 0;
     virtual void visit(VariableImpl& node) = 0;
@@ -530,7 +534,7 @@ public:
         return std::dynamic_pointer_cast<ExpressionImpl>(children_[i]);
     }
 
-    BinaryOp op() {int i; return op_;}
+    BinaryOp op() {return op_;}
 
     static std::string operatorToStr(BinaryOp op) {
         switch (op) {
@@ -655,6 +659,7 @@ public:
     UnaryOp op() { return op_; }
 
     virtual size_t dims() {return operand()->dims();};
+    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return operand()->size(dim);}
     virtual TensorLayout layout() {return operand()->layout();}
     
     virtual void setupAndCheckDimensions() 
@@ -1003,6 +1008,33 @@ public:
 
     virtual std::shared_ptr<ExpressionImpl> size(size_t dim) 
     {ASSERT(dim == 0, "Result of ReduceTensor is always of 1 dimension"); return std::shared_ptr<ExpressionImpl>(new ConstInt32(1));};
+    virtual TensorLayout layout() {return arg()->layout();}
+
+    virtual void setupAndCheckDimensions() 
+    {
+        //Nothing to do here
+    }
+};
+
+
+class NormImpl : public ExpressionImpl {
+public:
+    NormImpl(std::shared_ptr<TensorImpl> t) : 
+        ExpressionImpl(AstNodeType::NormNode, t->scattered(), t) {}
+    NormImpl(std::shared_ptr<StageImpl> s) :
+        ExpressionImpl(AstNodeType::NormNode, s->scattered(), s) {}
+    
+    virtual void accept(AstVisitor& v) {
+        v.visit(*this);
+    }
+    
+    virtual TensorElemType elemType() {return arg()->elemType();}
+    std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
+    virtual size_t dims() 
+    {return 1;}
+
+    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) 
+    {return std::shared_ptr<ExpressionImpl>(new ConstInt32(1));};
     virtual TensorLayout layout() {return arg()->layout();}
 
     virtual void setupAndCheckDimensions() 
