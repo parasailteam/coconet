@@ -78,7 +78,9 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
     TensorLayout layoutOp1 = operand(0)->layout();
     TensorLayout layoutOp2 = operand(1)->layout();
     
-    if (operand(0)->isPointwise() || operand(1)->isPointwise()) {
+    if (operand(0)->isPointwise() && operand(1)->isPointwise()) {
+        layout_ = Replicated;
+    } else if (operand(0)->isPointwise() || operand(1)->isPointwise()) {
         if (operand(0)->isPointwise()) {
             switch (layoutOp1) {
                 case Local:
@@ -88,7 +90,7 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
                     layout_ = layoutOp2;
                     break;
                 case Sliced:
-                    ASSERT(false, "Variable cannot be Sliced");
+                    ASSERT(false, "Pointwise cannot be Sliced");
                     break;
             }
         } else {
@@ -100,7 +102,7 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
                     layout_ = layoutOp1;
                     break;
                 case Sliced:
-                    ASSERT(false, "Variable cannot be Sliced");
+                    ASSERT(false, "Pointwise cannot be Sliced");
                     break;
             }
         }

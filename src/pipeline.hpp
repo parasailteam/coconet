@@ -367,6 +367,12 @@ namespace ACCCDSL {
                 if (liveouts.count(stage) == 0)
                     stageStoreLoc_[stage] = Register;
             }
+
+            //If any stage has an update node then set its location to memory
+            for (auto stage : stages()) {
+                if (stage->definition()->type() == UpdateNode)
+                    stageStoreLoc_[stage] = Memory;
+            }
         }
 
         void setTopoOrder(int topoOrder) {topoOrder_ = topoOrder;}

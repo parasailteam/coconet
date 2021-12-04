@@ -1274,7 +1274,9 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
         if (stageDef->type() == UpdateNode)
             stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
         if (stageDef->type() == NormNode) {
-            
+            if (pipeStage->getStorageLocation(output) == Register) {
+                codeStream << indent(1) << elemTypeToCType(output->elemType()) << " " << output->name() << " = 1;" << std::endl;
+            }
         } else {    
             std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
             PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
@@ -1282,15 +1284,15 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
             binOpCodegen.print(*binOpNode);
             //Print assignment to output stage
             //If stored in a register then emit declaration
-            
             if (pipeStage->getStorageLocation(output) == Register) {
                 codeStream << indent(1) << elemTypeToCType(output->elemType()) << " " << output->name() << ";" << std::endl;
             }
             std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : 
                             pipeline.explicitStoreLocations().at(output)->name();
             codeStream << indent(1) << name;
-            if (pipeStage->getStorageLocation(output) == Memory)
+            if (pipeStage->getStorageLocation(output) == Memory) {
                 codeStream << "[" << iteratorAccessString(output->dims()) << "]" ;
+            }
             
             codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
         }
@@ -3926,7 +3928,14 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
             } else {
                 CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
                 subFunctions.push_back(cfunc);
-                funcBody << genCUDAFuncCall(pipelineStage->stages()[0], cfunc, streamArg, 1)<<";"<<std::endl;
+                std::shared_ptr<StageImpl> sliceStage = nullptr;
+                for (auto stage : pipelineStage->stages()) {
+                    if (stage->layout() == Sliced) {
+                        sliceStage = stage;
+                    }
+                }
+                if (sliceStage == nullptr) sliceStage = pipelineStage->stages()[0];
+                funcBody << genCUDAFuncCall(sliceStage, cfunc, streamArg, 1)<<";"<<std::endl;
                 for (auto liveout : pipelineStage->liveoutStages(pipeline_.outputs())) {
                     //Add liveouts that are not output as intermediate
                     if (pipeline_.outputs().count(liveout) == 0) {
