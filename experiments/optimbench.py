@@ -30,7 +30,7 @@ import apex_C, sys
 parser = argparse.ArgumentParser(description='benchmark some optimizers')
 parser.add_argument('--optimizer', default=False,type=str)
 parser.add_argument('--fp16',action='store_true',default=False)
-parser.add_argument('--times',default=1000,type=int)
+parser.add_argument('--times',default=100,type=int)
 
 args = parser.parse_args()
 #DummyAllReduce.dummyAllReduce.argtypes = [c_ulonglong, c_ulonglong, c_int]
@@ -90,11 +90,8 @@ def take_optimizer_step(device, optimizer, overflow_buf):
 if os.environ['RANK'] == 0:
     print("<result>")
 for name, baseline in [(args.optimizer, baselines[args.optimizer])]:
-    for i in range(10, 32):
-        if (i == 31):
-            size = 336232258
-        else:
-            size = 2**i
+    for i in range(10, 31):
+        size = 2**i
         flat_params = torch.zeros(size, dtype=dtype).to(device)
         flat_grads  = torch.zeros(size, dtype=dtype).to(device)
         for split_size in [size]:
@@ -111,10 +108,7 @@ for name, baseline in [(args.optimizer, baselines[args.optimizer])]:
             torch.distributed.barrier()
             step_time = 0
             t0 = time.time()
-            if args.times == 1000:
-                epochs = min(1000,10*(1<<(30-i))) if (i < 31) else 20
-            else:
-                epochs = args.times
+            epochs = args.times
             optimizerCTime = 0
             array_type = c_float * size
             tmpInArray = grad.data_ptr()

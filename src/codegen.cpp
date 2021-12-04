@@ -4014,7 +4014,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
     if (options_ & GenMainFunction) {
         std::stringstream mainFunc;
         const std::string mainSig = "int main(int argc, char** argv)";
-        const std::string epochDecl = "int epochs = 100;\n";
+        const std::string epochDecl = "if (argc < 2) { printf(\"Specify epochs as command arg\"); return 1;}\n"
+                                      "   int epochs = atoi(argv[1]);\n";
         const std::string mpibarrier = "MPI_Barrier(MPI_COMM_WORLD);\n";
         const std::string ncclDestroyComm = "ncclCommDestroy(comm);\n";
         const std::string iterLoop = "for(int iter = 0; iter < epochs; iter++) {\n";

@@ -23,4 +23,4 @@ adam-rs-c-ag: adam-rs-c-ag.cu
 adam-fuse-rs-c-ag: adam-fuse-rs-c-ag.cu
 
 clean:
-	rm adam adam-ar-c.cu adam-ar-c adam-rs-c-ag.cu adam-rs-c-ag
+	rm -rf adam adam-ar-c.cu adam-ar-c adam-rs-c-ag.cu adam-rs-c-ag

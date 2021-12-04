@@ -23,4 +23,4 @@ lamb-rs-c-ag: lamb-rs-c-ag.cu
 lamb-fuse-rs-c-ag: lamb-fuse-rs-c-ag.cu
 
 clean:
-	rm lamb lamb-ar-c.cu lamb-ar-c lamb-rs-c-ag.cu lamb-rs-c-ag
+	rm -rf lamb lamb-ar-c.cu lamb-ar-c lamb-rs-c-ag.cu lamb-rs-c-ag

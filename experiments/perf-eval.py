@@ -6,7 +6,7 @@ import random
 import datetime
 
 FULL_PERF_EVAL = "1000"
-epochs = ""
+epochs = 1
 
 nccl_path = ""
 print ("""Takes 2 command line args:
@@ -57,11 +57,16 @@ def make_binary(binary):
     if "python" in binary:
         return
     print("make " + binary)
-    s, o = subprocess.getstatusoutput("rm " + binary + " ; " + " make "+ binary)
+    s, o = subprocess.getstatusoutput("make "+ binary)
     if s != 0:
         raise Exception("make unsuccessful.\n" +o )
     else:
         print("make successful")
+
+def make_clean():
+    s, o = subprocess.getstatusoutput("make clean")
+    if s != 0:
+        raise Exception("make clean error:\n" +o )
 
 def new_application_dir():
     while True:
@@ -91,8 +96,7 @@ def eval_binary(binary):
     storeOutFile = os.path.join(appDir, "stdout.txt")
     envVars = ldLibraryPath + " -x NCCL_ALGO=" + algo + " -x NCCL_PROTO=" + proto + \
         " -x NCCL_MIN_NCHANNELS=%d -x NCCL_NTHREADS=%d -x NCCL_LL128_NTHREADS=%d -x NCCL_MAX_NCHANNELS=%d -x NCCL_BUFFSIZE=4194304"%(channels, nthreads, nthreads, channels)   
-    command = "mpirun -np " + str(ranks) +" " + mpiargs + " " + envVars + " " + binary #+ " " + (epochs if "python" not in binary else ("--times " + epochs if epochs != "" else ""))
-    command += " &> " + storeOutFile
+    command = "mpirun -np " + str(ranks) +" " + mpiargs + " " + envVars + " " + binary + " " + str(epochs if "python" not in binary else ("--times " + str(epochs) if epochs != "" else ""))
     
     print("starting at ", str(datetime.datetime.now()))
     print(command)
@@ -101,18 +105,19 @@ def eval_binary(binary):
     print (o)
     print("done at ", str(datetime.datetime.now()))
     print("Storing results in  ", appDir)
+    with open(os.path.join(appDir, storeOutFile), "w") as f:
+        f.write(o)
     with open(os.path.join(appDir, "json.json"), "w") as f:
         f.write(command)
 
 #Perf eval FusedAdam
-# try:
-#     print("In '%s'"%os.getcwd())
-#     # eval_binary("python3 optimbench.py --optimizer FusedAdam", epochs, pythonpath)
-#     eval_binary("python3 optimbench.py --optimizer FusedAdam --fp16")
-#     # eval_binary("python3 optimbench.py --optimizer FusedLAMB", epochs, pythonpath)
-#     eval_binary("python3 optimbench.py --optimizer FusedLAMB --fp16")
-# except Exception as e:
-#     print (e)
+try:
+    eval_binary("python3 optimbench.py --optimizer FusedAdam")
+    # eval_binary("python3 optimbench.py --optimizer FusedAdam --fp16")
+    eval_binary("python3 optimbench.py --optimizer FusedLAMB")
+    # eval_binary("python3 optimbench.py --optimizer FusedLAMB --fp16")
+except Exception as e:
+    print (e)
 
 # sys.exit(0)
 
@@ -132,12 +137,28 @@ def eval_binary(binary):
     
 #Perf eval Adam FP16
 try:
-    print("In parent dir: %s"%nccl_path)
+    currDir = os.getcwd()
+    print("Running CoCoNet's Adam")
     # compile_nccl(os.path.join(nccl_path))
     os.chdir("../examples/adam")
+    make_clean()
     eval_binary("adam-ar-c")
     eval_binary("adam-rs-c-ag")
     # eval_binary("./", epochs,ldLibraryPath)
+    os.chdir(currDir)
+except Exception as e:
+    print (e)
+
+try:
+    currDir = os.getcwd()
+    print("Running CoCoNet's LAMB")
+    # compile_nccl(os.path.join(nccl_path))
+    os.chdir("../examples/lamb")
+    make_clean()
+    eval_binary("lamb-ar-c")
+    eval_binary("lamb-rs-c-ag")
+    # eval_binary("./", epochs,ldLibraryPath)
+    os.chdir(currDir)
 except Exception as e:
     print (e)
 
