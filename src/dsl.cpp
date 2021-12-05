@@ -126,7 +126,8 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
         PROCESS_VAL(ConstantNode)
         PROCESS_VAL(ScatterNode)
         PROCESS_VAL(IteNode)
-
+        PROCESS_VAL(UpdateNode)
+        
         default:
             ASSERT(false, "Undefined AstNodeType " << t);
     }

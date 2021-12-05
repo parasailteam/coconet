@@ -11,6 +11,7 @@
 
 #define TYPE_ALL_REDUCE 1
 
+
 #if TYPE_ALL_REDUCE == 0
 
 template<int UNROLL, class FUNC, typename T>

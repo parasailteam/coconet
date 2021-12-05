@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <map>
+#include <regex>
 
 using namespace ACCCDSLImpl;
 
@@ -318,6 +319,14 @@ std::string& replaceAllSubString(std::string& s, std::string subs, std::string r
     }
 
     return s;
+}
+
+void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::string replacement)
+{
+    std::regex e(regexSub);
+    std::string contents = readFile(filepath);
+    contents = std::regex_replace(contents, e, replacement);
+    writeFile(filepath, contents);
 }
 
 std::string cudaCheck(std::string s)
@@ -1564,9 +1573,10 @@ std::string MULTIMethodBodyFor4BytesTypeMixedPrecision(std::shared_ptr<StageImpl
 
 std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelineStage)
 {
-    const std::string ACCCDSL_PATH = "../";
-    const std::string NCCL_SRC_PATH = ACCCDSL_PATH + "/nccl-src/";
-    const std::string NCCL_DST_PATH = ACCCDSL_PATH + "../nccl-2/src/";
+
+    const std::string ACCCDSL_PATH = "../../";
+    const std::string NCCL_SRC_PATH = ACCCDSL_PATH + "/nccl/";
+    const std::string NCCL_DST_PATH = ACCCDSL_PATH + "../nccl/";
     const std::string INSERT_TAG = "/*{INSERT HERE}*/";
     const std::string INSERT_SIZE_TAG = "/*{INSERT SIZE HERE}*/";
     const std::string ncclFuncResultTy = "ncclResult_t";
@@ -1635,8 +1645,9 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     } 
     
     std::stringstream ncclFuncArgs;
-    std::string funcName = AstNodeTypeToStr(commCollType);
-    funcName = funcName.substr(0, funcName.find("Node")) + "_" + pipeline.name();
+    std::string funcName = "AllReduce_pipe";
+    //  AstNodeTypeToStr(commCollType);
+    // funcName = funcName.substr(0, funcName.find("Node")) + "_" + pipeline.name();
     std::set<std::shared_ptr<ExpressionImpl>> gpuKernelArgs;
     std::set<std::shared_ptr<ExpressionImpl>> outputs;
     std::vector<std::shared_ptr<StageImpl>> computationStages;
@@ -1648,13 +1659,10 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
             computationStages.push_back(stage);
     }
 
-    for (auto arg : pipelineStage->inputExprs()) {
-        gpuKernelArgs.insert(std::shared_ptr<ExpressionImpl>(arg));
+    for (auto arg : pipelineStage->liveinExprs()) {
+        gpuKernelArgs.insert(arg);
     }
 
-    printf("pipestage outputs\n");
-    ASSERT(false, "FIXME");
-    #if 0
     for (auto out : pipelineStage->liveoutStages(pipeline.outputs())) {
         outputStages.insert(out);
         if (pipeline.explicitStoreLocations().count(out) > 0) {
@@ -1666,9 +1674,8 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
             gpuKernelArgs.insert(out);
         }
     }
-    #endif
 
-    ASSERT(outputStages.size() == 1, "Codegen for only one live out is supported but live outs are " << outputStages.size());
+    // ASSERT(outputStages.size() == 1, "Codegen for only one live out is supported but live outs are " << outputStages.size());
 
     for (auto arg : gpuKernelArgs) {
         ncclFuncArgs << printArgument(arg) << ", ";
@@ -1686,7 +1693,7 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
                                ncclFuncArgs.str() + ")";
     std::string ncclFuncDecl = ncclFunc +";\n";
 
-    {
+    if (false) {
         std::string ncclHContents = readFile(NCCL_SRC_PATH + "nccl.h.in");
         ncclHContents = ncclHContents.replace(ncclHContents.find(INSERT_TAG), 
                                               INSERT_TAG.size(), ncclFuncDecl);
@@ -1709,6 +1716,41 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
                  << streamArg << ")";
 
     std::string ncclFuncCallStr = ncclCheck(ncclFuncCall.str());
+    
+    std::string v = "";
+    
+    if (pipeline.name() == "adam") 
+        v = "1";
+    else if (pipeline.name() == "lamb") 
+        v = "2";
+
+    std::cout << "v " << v << " " << pipeline.name() << std::endl;
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/nccl.h.in", 
+                              "#define TYPE_NCCL_H_IN\\s*\\d*", "#define TYPE_NCCL_H_IN " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/common_kernel.h", 
+                              "#define TYPE_COMMON_KERNEL\\s*\\d*", "#define TYPE_COMMON_KERNEL " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/prims_ll128_computation.h", 
+                              "#define TYPE_PRIMS_LL128\\s*\\d*", "#define TYPE_PRIMS_LL128 " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/primitives_computation.h", 
+                              "#define TYPE_PRIMS\\s*\\d*", "#define TYPE_PRIMS " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/prims_ll_computation.h", 
+                              "#define TYPE_PRIMS_LL\\s*\\d*", "#define TYPE_PRIMS_LL " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/all_reduce_computation.h", 
+                              "#define TYPE_ALL_REDUCE\\s*\\d*", "#define TYPE_ALL_REDUCE " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/reduce_kernel.h", 
+                              "#define TYPE_REDUCE_KERNEL\\s*\\d*", "#define TYPE_REDUCE_KERNEL " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/all_reduce.h", 
+                              "#define TYPE_ALL_REDUCE\\s*\\d*", "#define TYPE_ALL_REDUCE " + v+"\n");
+
+    // ./collectives/device/prims_ll128_computation.h:#define TYPE_PRIMS_LL128 1
+    // ./collectives/device/all_reduce_computation.h:#define TYPE_ALL_REDUCE 1
+    // ./collectives/device/primitives_computation.h:#define TYPE_PRIMS 1
+    // ./collectives/device/prims_ll_computation.h:#define TYPE_PRIMS_LL 1
+    // ./collectives/device/reduce_kernel.h:#define TYPE_REDUCE_KERNEL 1
+    // ./collectives/all_reduce.cc:#define TYPE_ALL_REDUCE 1
+
+    return ncclFuncCallStr;
+
     /*Update ncclInfo_t in include/info.h.in*/
     
     //Add all inputs and outputs to ncclInfo_t
