@@ -9,6 +9,11 @@
 
 #define TYPE_NCCL_H_IN 1
 
+
+
+
+
+
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 

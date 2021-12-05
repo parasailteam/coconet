@@ -1573,7 +1573,6 @@ std::string MULTIMethodBodyFor4BytesTypeMixedPrecision(std::shared_ptr<StageImpl
 
 std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelineStage)
 {
-
     const std::string ACCCDSL_PATH = "../../";
     const std::string NCCL_SRC_PATH = ACCCDSL_PATH + "/nccl/";
     const std::string NCCL_DST_PATH = ACCCDSL_PATH + "../nccl/";
@@ -1719,10 +1718,14 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     
     std::string v = "";
     
-    if (pipeline.name() == "adam") 
+    if (pipeline.name() == "adam") {
+        v = "0";
+        ncclFuncCallStr = "NCCLCHECK(AllReduce_pipe(lr, beta1, beta2, (half*)g, w, (half*)w, m, v, N, ncclHalf, comm, ncclSum, stream));";
+    }
+    else if (pipeline.name() == "lamb") {
         v = "1";
-    else if (pipeline.name() == "lamb") 
-        v = "2";
+        ncclFuncCallStr = "NCCLCHECK(AllReduce_pipe(lr, beta1, beta2, (half*)g, w, (half*)w, m, v, w, N, ncclHalf, comm, ncclSum, stream));";
+    }
 
     std::cout << "v " << v << " " << pipeline.name() << std::endl;
     replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/nccl.h.in", 
@@ -1740,6 +1743,8 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/reduce_kernel.h", 
                               "#define TYPE_REDUCE_KERNEL\\s*\\d*", "#define TYPE_REDUCE_KERNEL " + v+"\n");
     replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/device/all_reduce.h", 
+                              "#define TYPE_ALL_REDUCE\\s*\\d*", "#define TYPE_ALL_REDUCE " + v+"\n");
+    replaceAllSubStringInFile(NCCL_SRC_PATH+"/src/collectives/all_reduce.cc", 
                               "#define TYPE_ALL_REDUCE\\s*\\d*", "#define TYPE_ALL_REDUCE " + v+"\n");
 
     // ./collectives/device/prims_ll128_computation.h:#define TYPE_PRIMS_LL128 1
@@ -3967,6 +3972,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
 
             if (hasACommCollStage) {
                 funcBody << indent(1) << generateFusedNCCLCommColl(pipeline_, pipelineStage) << std::endl;
+                pipelineStageName = "FusedAllReduce";
             } else {
                 CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
                 subFunctions.push_back(cfunc);
