@@ -145,5 +145,5 @@ python gen-data-parallel-graphs.py results/
 ```
 
 Graphs with following names are stored in `experiments` directory:
-* `results-adam-$(NPROC).pdf`: Shows the results for Adam optimizer
-* `results-lamb-$(NPROC).pdf`: Shows the results for LAMB optimizer
+* `Figure10a.pdf`: Shows the results for Adam optimizer
+* `Figure10b.pdf`: Shows the results for LAMB optimizer

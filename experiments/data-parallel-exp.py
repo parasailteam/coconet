@@ -5,10 +5,12 @@ import math
 import random
 import datetime
 import shutil
+import traceback
 
 FULL_PERF_EVAL = "1000"
 epochs = 1
 
+assert sys.version_info.major >= 3 and sys.version_info.minor >= 7, "The script requires Python 3.7+ but is running on Python %d.%d"%(sys.version_info.major, sys.version_info.minor)
 if len(sys.argv) < 2:
     print("Results directory not specified")
     sys.exit(0)
@@ -130,14 +132,18 @@ except Exception as e:
 try:
     currDir = os.getcwd()
     print("Running CoCoNet's Adam")
-    # compile_nccl(os.path.join(nccl_path))
+    
     os.chdir("../examples/adam")
     make_clean()
     eval_binary("adam-ar-c")
     eval_binary("adam-rs-c-ag")
-    # eval_binary("./", epochs,ldLibraryPath)
+    make_binary("adam-fuse-rs-c-ag.cu")
+    compile_nccl(nccl_path)
+    os.chdir("../examples/adam")
+    eval_binary("adam-fuse-rs-c-ag")
     os.chdir(currDir)
 except Exception as e:
+    traceback.print_exc()
     print (e)
 
 try:
@@ -148,7 +154,10 @@ try:
     make_clean()
     eval_binary("lamb-ar-c")
     eval_binary("lamb-rs-c-ag")
-    # eval_binary("./", epochs,ldLibraryPath)
+    make_binary("lamb-fuse-rs-c-ag.cu")
+    compile_nccl(nccl_path)
+    os.chdir("../examples/lamb")
+    eval_binary("lamb-fuse-rs-c-ag")
     os.chdir(currDir)
 except Exception as e:
     print (e)

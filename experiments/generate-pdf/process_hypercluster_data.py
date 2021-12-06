@@ -7,8 +7,8 @@ import sys
 import shutil
  # ["allreduce-lambf16", "reducescatter-lamb-allgatherf16", "test-lambf16"] + \
  # ["allreduce-adamf16", "reducescatter-adam-allgatherf16", "test-adamf16"] +\
-all_binaries = ["adam-ar-c", "adam-rs-c-ag", "test-adam"] + \
-    ["lamb-ar-c", "lamb-rs-c-ag", "test-lamb"] + \
+all_binaries = ["adam-ar-c", "adam-rs-c-ag", "adam-fuse-rs-c-ag"] + \
+    ["lamb-ar-c", "lamb-rs-c-ag", "lamb-fuse-rs-c-ag"] + \
     ["python3 optimbench.py --optimizer FusedLAMB --fp16", "python3 optimbench.py --optimizer FusedLAMB", "python3 optimbench.py --optimizer FusedAdam --fp16", "python3 optimbench.py --optimizer FusedAdam"] + \
     ["multi-process-adam-scattered lamb", "multi-process-adam-scattered adam", "multi-process-adam-scatteredf16 adam", "multi-process-adam-scatteredf16 lamb"]
 all_gpus = [2**i for i in range(1, 9)] 

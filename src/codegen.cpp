@@ -338,12 +338,12 @@ std::string ncclCheck(std::string s)
 {
     return "NCCLCHECK(" + s + ");";
 }
-std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg)
+std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg, bool x=false)
 {
     const std::string cudaMalloc = "cudaMalloc";
     std::stringstream code;
 
-    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << " * sizeof(" << 
+    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*comm_size":"")<< " * sizeof(" << 
         elemTypeToCType(arg->elemType()) << "))";
     
     return cudaCheck(code.str());
@@ -3835,6 +3835,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
              << indent(1) << "float " << elapsedTimeVar << ";" << std::endl
              << indent(1) << printEventCreate(startEvent) << std::endl
              << indent(1) << printEventCreate(stopEvent) << std::endl << std::endl;
+    
+    bool hasACommCollStage = false;
 
     //Generate code in a topological sort manner
     for (auto pipelineStage : pipeline_.topoOrder()) {
@@ -3961,7 +3963,6 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 }
             }
         } else {
-            bool hasACommCollStage = false;
             for (auto outStage : pipelineStage->stages()) {
                 std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
                 if (stageDef->isCommCollective()) {
@@ -4280,7 +4281,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 const std::shared_ptr<ExpressionImpl>& arg = *iter;
                 mainFunc << indent(indentLevel) << printDeclaration(arg) << std::endl;
                 if (arg->type() == StageNode or arg->type() == TensorNode) {
-                    mainFunc << indent(indentLevel) << printCUDAMalloc(arg) << std::endl;
+                    mainFunc << indent(indentLevel) << printCUDAMalloc(arg, hasACommCollStage) << std::endl;
                     mainFunc << indent(indentLevel) << "cudaMemRandInt(" << arg->name() << ", " << genNumElem(arg) << ");" << std::endl;
                 } else {
                     mainFunc << indent(indentLevel) << arg->name() << " = 1.0f;" << std::endl;

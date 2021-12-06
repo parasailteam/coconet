@@ -18,6 +18,15 @@
 
 
 
+
+
+
+
+
+
+
+
+
 #if TYPE_ALL_REDUCE == 0
 
 template<int UNROLL, class FUNC, typename T>

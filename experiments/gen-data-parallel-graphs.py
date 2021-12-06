@@ -38,12 +38,14 @@ try:
     os.chdir("./generate-pdf")
     c = "python3 dsl_vs_apex.py --optimizer adam --ranks %s --channels 32 --protocol simple --results-dir %s"%(nranks, resultsDir)
     results_csv = "results-adam-%s.csv"%(nranks)
+    results_pdf = results_csv.replace(".csv", ".pdf")
     s,o = execute_command(c)
     with open(results_csv, "w") as f:
         f.write(o)
     c = "python3 plot_dsl_vs_apex.py results-adam-%s.csv"%(nranks)
     execute_command(c)
     os.chdir(currDir)
+    os.rename(results_pdf, "Figure10a.pdf")
 except Exception as e:
     print(e)
 
@@ -54,11 +56,14 @@ try:
     os.chdir("./generate-pdf")
     c = "python3 dsl_vs_apex.py --optimizer lamb --ranks %s --channels 32 --protocol simple --results-dir %s"%(nranks, resultsDir)
     results_csv = "results-lamb-%s.csv"%(nranks)
+    results_pdf = results_csv.replace(".csv", ".pdf")
     s,o = execute_command(c)
     with open(results_csv, "w") as f:
         f.write(o)
     c = "python3 plot_dsl_vs_apex.py results-lamb-%s.csv"%(nranks)
     execute_command(c)
+    os.chdir(currDir)
+    os.rename(results_pdf, "Figure10b.pdf")
 except Exception as e:
     print(e)
 

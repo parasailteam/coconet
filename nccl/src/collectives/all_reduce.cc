@@ -23,6 +23,15 @@ ncclResult_t ncclAllReduce(const void* sendbuff, void* recvbuff, size_t count,
 
 
 
+
+
+
+
+
+
+
+
+
 #if TYPE_ALL_REDUCE == 0
 NCCL_API(ncclResult_t, AllReduce_pipe, float lr, float beta1, float beta2, half* g, float* w, half* halfw, float* m, float* v, size_t count, ncclDataType_t datatype, ncclComm_t comm, ncclRedOp_t op, cudaStream_t stream);
 
