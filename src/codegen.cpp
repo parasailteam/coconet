@@ -1184,12 +1184,14 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
     std::string N = genNumElem(output, output->dimSizes().size() - 1, output->dimSizes().size());
     std::string K = genNumElem(matmul->operand(0), matmul->operand(0)->dimSizes().size() - 1, matmul->operand(0)->dimSizes().size());
     std::stringstream cublasCall;
-    cublasCall << "cublasGemmEx(" << cublasHandleVar << ", CUBLAS_OP_N, CUBLAS_OP_N" << ", " //Always perform row major
-               << N << ", " <<  M << ", " << K << ", " << "&alpha, " << input2Name << ", " << cublasTypeA << 
-               ", " << N << ", "
-               << input1Name << ", " << cublasTypeB << ", " << K << ", "
-               << "&beta, " << name << ", " << cublasTypeC << ", " << N << ", "
-               << "CUDA_R_16F, CUBLAS_GEMM_DFALT_TENSOR_OP))";
+    //Always perform row major
+    cublasCall << "cublasGemmEx(" << cublasHandleVar << ", CUBLAS_OP_N, CUBLAS_OP_N" << ", " << std::endl
+               << indent(2) << N << ", " <<  M << ", " << K << ", " << std::endl
+               << indent(2) << "&alpha, "
+               << indent(2) << input2Name << ", " << cublasTypeA << ", " << N << ", " << std::endl
+               << indent(2) << input1Name << ", " << cublasTypeB << ", " << K << ", " << std::endl
+               << indent(2) << "&beta, " << name << ", " << cublasTypeC << ", " << N << ", " << std::endl
+               << indent(2) << "CUDA_R_16F, CUBLAS_GEMM_DFALT_TENSOR_OP)";
     //TODO: Supports only 16 bit for now
     codeStream << indent(1) << cublasCheck(cublasCall.str()) << std::endl;
     codeStream << "}";
@@ -4373,8 +4375,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 "  ncclCommInitRank(&comm, comm_size, id, rank);\n";
             const std::string streamDecl = "  " + streamTy + " " + streamArg + ";\n" + "  cudaStreamCreate(&"+streamArg+");\n";
             const std::string cublasHandleDecl = indent(1) + cublasHandleTy + " "  + cublasHandleVar + ";\n" +
-                                                 indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+"))" + "\n" +
-                                                 indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") +
+                                                 indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+"))") + "\n" +
+                                                 indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") + "\n" +
                                                  indent(1) + cublasCheck("cublasSetMathMode(" + cublasHandleVar + ", CUBLAS_TENSOR_OP_MATH)");
 
 
