@@ -494,7 +494,10 @@ namespace ACCCDSL {
         }
 
         std::vector<PipelineStage*> inputs() {return inputs_;}
-        std::string name() {return name_;}
+        std::string name() {
+            auto n = replaceAllSubString(name_, "-", "_");
+            return replaceAllSubString(n, " ", "_");
+        }
         const std::vector<PipelineStage*>& topoOrder() {return topoOrder_;}
         const std::set<std::shared_ptr<StageImpl>>& outputs() {return stageOutputs_;}
         const std::vector<std::shared_ptr<ExpressionImpl>>& arguments() {return arguments_;} 

@@ -20,6 +20,8 @@ const std::string rankVarTy = "int";
 const std::string rankString = "rank";
 const std::string commSizeArg = "comm_size";
 const std::string commSizeTy = "int";
+const std::string cublasHandleVar = "cublasHandle";
+const std::string cublasHandleTy = "cublasHandle_t";
 
 class NumElemGen : public AstVisitor
 {
@@ -123,10 +125,11 @@ class NumElemGen : public AstVisitor
         }  
 };
 
-std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
+//Print from startDim to endDim (not including)
+std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim, int endDim)
 {
     std::stringstream numElemStream;
-    if (numElemExpr->layout() == Sliced)
+    if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
         numElemStream << "DIVUP(";
 
     if (numElemExpr->dimSizes().size() == 1) {
@@ -135,20 +138,31 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
     } else {
         numElemStream << "(";
         for (auto iter = numElemExpr->dimSizes().begin(); iter != numElemExpr->dimSizes().end();) {
+            if (iter - numElemExpr->dimSizes().begin() < startDim) {
+                iter++;
+                continue;
+            }
+            if (iter - numElemExpr->dimSizes().begin() >= endDim)
+                break;
             NumElemGen numElemGen(numElemStream);
             numElemGen.print(*(*iter).get());   
             iter++;
-            if (iter != numElemExpr->dimSizes().end()) {
+            if (iter - numElemExpr->dimSizes().begin() != endDim) {
                 numElemStream << "*";
             }
         }
         numElemStream << ")";
     }
     
-    if (numElemExpr->layout() == Sliced)
+    if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
         numElemStream << ", comm_size)";
 
     return numElemStream.str();
+}
+
+std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
+{
+    return genNumElem(numElemExpr, 0, numElemExpr->dimSizes().size());
 }
 
 template<typename T>
@@ -312,15 +326,6 @@ uint64_t currOrNextPowerOf2(uint64_t num) {
     return nextPowerOf2(num);
 }
 
-std::string& replaceAllSubString(std::string& s, std::string subs, std::string replacement)
-{
-    while(s.find(subs) != s.npos) {
-        s = s.replace(s.find(subs), subs.size(), replacement);
-    }
-
-    return s;
-}
-
 void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::string replacement)
 {
     std::regex e(regexSub);
@@ -338,6 +343,12 @@ std::string ncclCheck(std::string s)
 {
     return "NCCLCHECK(" + s + ");";
 }
+
+std::string cublasCheck(std::string s)
+{
+    return "CUBLASCHECK(" + s + ");";
+}
+
 std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg, bool x=false)
 {
     const std::string cudaMalloc = "cudaMalloc";
@@ -1107,6 +1118,83 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
     return CFunc({funcName, codeStream.str(), redOpInputs, true});
 }
 
+CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<MatMulImpl> matmul)
+{
+    std::stringstream codeStream;
+    static int nameCounter = 0;
+    std::string funcName = "matMul" + std::to_string(nameCounter++);
+
+    codeStream << "void " << funcName << "(";
+
+    //Print arguments of CUDA Kernel
+    //Add output to arguments too.
+    std::set<std::shared_ptr<ExpressionImpl>> inputs;
+    inputs.insert(matmul->operand(0));
+    inputs.insert(matmul->operand(1));
+    
+    for (auto it : pipeline.explicitStoreLocations()) {
+        inputs.erase(it.first);
+        inputs.insert(it.second);
+    }
+    
+    auto dimExprs = allDimExprs(inputs.begin(), inputs.end());
+    inputs.insert(dimExprs.begin(), dimExprs.end());
+
+    int ii = 0;
+    for (auto iter : inputs) {
+        codeStream << elemTypeToCType(iter->elemType()) << " ";
+        if (iter->type() == TensorNode || iter->type() == StageNode)
+            codeStream << "* ";
+        codeStream << iter->name();
+        codeStream << ", ";
+    }
+    
+    codeStream << cublasHandleTy << " " << cublasHandleVar << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+    codeStream << ") {" << std::endl;
+
+    //Function body
+    //Iterator initialization from threadIdx and blockIdx
+    
+    std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
+    std::string input1Name, input2Name;
+
+    if (matmul->operand(0)->type() == TensorNode) {
+        input1Name = matmul->operand(0)->name();
+    } else {
+        std::shared_ptr<StageImpl> inputStage = AstNodeImpl::asStageImpl(matmul->operand(0));
+        input1Name = pipeline.explicitStoreLocations().count(inputStage) == 0 ? matmul->operand(0)->name() : pipeline.explicitStoreLocations().at(inputStage)->name();
+    }
+
+    if (matmul->operand(1)->type() == TensorNode) {
+        input2Name = matmul->operand(1)->name();
+    } else {
+        std::shared_ptr<StageImpl> inputStage = AstNodeImpl::asStageImpl(matmul->operand(1));
+        input2Name = pipeline.explicitStoreLocations().count(inputStage) == 0 ? matmul->operand(1)->name() : pipeline.explicitStoreLocations().at(inputStage)->name();
+    }
+
+    std::string cublasTypeA = elemTypeToCUBLASType(matmul->operand(0)->elemType());
+    std::string cublasTypeB = elemTypeToCUBLASType(matmul->operand(1)->elemType());
+    std::string cublasTypeC = elemTypeToCUBLASType(output->elemType());
+
+    //Declare alpha and beta
+    codeStream << indent(1) << "float alpha = 1.0f" << std::endl
+               << indent(1) << "float beta = 0.0f" << std::endl;
+    
+    std::string M = genNumElem(output, 0, output->dimSizes().size() - 1);
+    std::string N = genNumElem(output, output->dimSizes().size() - 1, output->dimSizes().size());
+    std::string K = genNumElem(matmul->operand(0), matmul->operand(0)->dimSizes().size() - 1, matmul->operand(0)->dimSizes().size());
+    std::stringstream cublasCall;
+    cublasCall << "cublasGemmEx(" << cublasHandleVar << ", CUBLAS_OP_N, CUBLAS_OP_N" << ", " //Always perform row major
+               << N << ", " <<  M << ", " << K << ", " << "&alpha, " << input2Name << ", " << cublasTypeA << 
+               ", " << N << ", "
+               << input1Name << ", " << cublasTypeB << ", " << K << ", "
+               << "&beta, " << name << ", " << cublasTypeC << ", " << N << ", "
+               << "CUDA_R_16F, CUBLAS_GEMM_DFALT_TENSOR_OP))";
+    //TODO: Supports only 16 bit for now
+    codeStream << indent(1) << cublasCheck(cublasCall.str()) << std::endl;
+    codeStream << "}";
+    return CFunc({funcName, codeStream.str(), inputs, true});
+}
 
 CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<NormImpl> reduceTensor)
 {
@@ -3741,7 +3829,7 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
 
 std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, std::string streamArg, int indentLevel) 
 {
-    ASSERT(outStage->dims() == 1, "Only 1 dimension tensors supported");
+    // ASSERT(outStage->dims() == 1, "Only 1 dimension tensors supported");
     ASSERT(cfunc.isCUDA, "Function is not a CUDA kernel");
     std::stringstream totalThreads;
     static int kernelCall = 0;
@@ -3750,28 +3838,33 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
 
     if (stageDef->type() == UpdateNode)
         stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
-
-    if (stageDef->type() == BinaryPointwiseOpNode) {
-        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
-    } else if (stageDef->type() == ReduceTensorNode) {
-        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asReduceTensorImpl(stageDef)->arg()) << ";";
-    } else if (stageDef->type() == NormNode) {
-        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asNormImpl(stageDef)->arg()) << ";";
-    } else {
-        ASSERT(false, "Not implemented for node type\n");
-    }
-
-    std::string numThreadsVar = "numThreads_"+ std::to_string(kernelCall);
-    std::string numThreadBlocksVar = "numThreadBlocks_"+std::to_string(kernelCall);
-    std::stringstream numThreads;
-    std::stringstream numThreadBlocks;
-    numThreads << "size_t " << numThreadsVar << " = (size_t)min(" << totalThreadsVar << ", 256UL);";
-    numThreadBlocks << "size_t " << numThreadBlocksVar << " = DIVUP(" << totalThreadsVar << ", " << numThreadsVar << ");";
-
+    
     std::stringstream call;
-    call << indent(indentLevel) << totalThreads.str() << std::endl << indent(indentLevel) << numThreads.str() << std::endl << indent(indentLevel) << numThreadBlocks.str() << std::endl;
+    if (stageDef->type() == MatMulNode) {
+        call << indent(indentLevel) << cfunc.name << "(";
+    } else {
+        if (stageDef->type() == BinaryPointwiseOpNode) {
+            totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
+        } else if (stageDef->type() == ReduceTensorNode) {
+            totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asReduceTensorImpl(stageDef)->arg()) << ";";
+        } else if (stageDef->type() == NormNode) {
+            totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asNormImpl(stageDef)->arg()) << ";";
+        } else {
+            ASSERT(false, "Not implemented for node type\n");
+        }
+
+        std::string numThreadsVar = "numThreads_"+ std::to_string(kernelCall);
+        std::string numThreadBlocksVar = "numThreadBlocks_"+std::to_string(kernelCall);
+        std::stringstream numThreads;
+        std::stringstream numThreadBlocks;
+        numThreads << "size_t " << numThreadsVar << " = (size_t)min(" << totalThreadsVar << ", 256UL);";
+        numThreadBlocks << "size_t " << numThreadBlocksVar << " = DIVUP(" << totalThreadsVar << ", " << numThreadsVar << ");";
+
+        call << indent(indentLevel) << totalThreads.str() << std::endl << indent(indentLevel) << numThreads.str() << std::endl << indent(indentLevel) << numThreadBlocks.str() << std::endl;
+        call << indent(indentLevel) << cfunc.name << "<<<" << numThreadBlocksVar << ", " << numThreadsVar << ", "<< 0 << ", " << streamArg <<">>>(";
+    }
+    
     int ii = 0;
-    call << indent(indentLevel) << cfunc.name << "<<<" << numThreadBlocksVar << ", " << numThreadsVar << ", "<< 0 << ", " << streamArg <<">>>(";
     for (auto iter : cfunc.arguments) {
         call << iter->name();
         if (ii != cfunc.arguments.size() - 1)
@@ -3837,6 +3930,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
              << indent(1) << printEventCreate(stopEvent) << std::endl << std::endl;
     
     bool hasACommCollStage = false;
+    bool useCUBLAS = false;
 
     //Generate code in a topological sort manner
     for (auto pipelineStage : pipeline_.topoOrder()) {
@@ -3949,6 +4043,14 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                         pipelineStageName = cfunc.name;
                         break;
                     }
+                    case MatMulNode: {
+                        CFunc cfunc = generateCUBLASMatMul(pipeline_, outStage, AstNodeImpl::asMatMulImpl(stageDef));
+                        subFunctions.push_back(cfunc);
+                        funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                        pipelineStageName = cfunc.name;
+                        useCUBLAS = true;
+                        break;
+                    }
                     default:
                         ASSERT(false, "Case for type '" << AstNodeTypeToStr(stageDef->type()) << "' not defined.");
                 }
@@ -4050,6 +4152,10 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
     }
     //NCCLComm and CUDA Stream arguments
     os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+
+    if (useCUBLAS)
+        os_ << ", " << cublasHandleTy << " " << cublasHandleVar;
+
     os_ << ")";
     /*Function body*/
     os_ << "{";
@@ -4266,7 +4372,12 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n"
                 "  ncclCommInitRank(&comm, comm_size, id, rank);\n";
             const std::string streamDecl = "  " + streamTy + " " + streamArg + ";\n" + "  cudaStreamCreate(&"+streamArg+");\n";
-            
+            const std::string cublasHandleDecl = indent(1) + cublasHandleTy + " "  + cublasHandleVar + ";\n" +
+                                                 indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+"))" + "\n" +
+                                                 indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") +
+                                                 indent(1) + cublasCheck("cublasSetMathMode(" + cublasHandleVar + ", CUBLAS_TENSOR_OP_MATH)");
+
+
             mainFunc << mpiStartCode << "  " << epochDecl << streamDecl << "  " << mpibarrier << std::endl;
             int indentLevel = 1;
             

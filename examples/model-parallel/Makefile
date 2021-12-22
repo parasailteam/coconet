@@ -1,26 +1,26 @@
 include ../common.mk
 
-all: sgd sgd-ar-c sgd-rs-c-ag sgd-fuse-rs-c-ag
+all: model-parallel model-parallel-ar-c model-parallel-rs-c-ag model-parallel-fuse-rs-c-ag
 
-sgd: sgd.cpp
+model-parallel: model-parallel.cpp
 	g++ $(COCONET_FLAGS) -g -O0 $< -o $@ -std=c++14
 
-sgd-ar-c.cu: sgd
-	./sgd AR_C
+model-parallel-mm-ar-c.cu: model-parallel
+	./model-parallel MM_AR_C
 
-sgd-rs-c-ag.cu: sgd
-	./sgd RS_C_AG
+model-parallel-rs-c-ag.cu: model-parallel
+	./model-parallel MM_RS_C_AG
 
-sgd-fuse-rs-c-ag.cu: sgd
-	./sgd fuse\(RS_C_AG\)
+model-parallel-fuse-rs-c-ag.cu: model-parallel
+	./model-parallel ol_MM_fuse_RS_C_AG
 
-sgd-ar-c: sgd-ar-c.cu
+model-parallel-ar-c: model-parallel-ar-c.cu
 	nvcc $< -std=c++11 -Xcompiler -fopenmp -lcudadevrt -lcudart -I/usr/include/x86_64-linux-gnu/openmpi -I.. -I/usr/local/cuda/include/ -I../../ -I$(NCCL_BUILD_PATH)/include -L$(NCCL_BUILD_PATH)/lib/ -L/usr/local/cuda/lib64/ -lnccl -lcublas -lcurand -c -o $@.o && $(MPI_CXX) $@.o -L$(NCCL_BUILD_PATH)/lib -L/usr/local/cuda/lib64/ -lcudart -lnccl -lcublas -Wall -lcurand -lcudadevrt -std=c++11 -fopenmp -o $@
 
-sgd-rs-c-ag: sgd-rs-c-ag.cu
+model-parallel-rs-c-ag: model-parallel-rs-c-ag.cu
 	nvcc $< -std=c++11 -Xcompiler -fopenmp -lcudadevrt -lcudart -I/usr/include/x86_64-linux-gnu/openmpi -I.. -I/usr/local/cuda/include/ -I../../ -I$(NCCL_BUILD_PATH)/include -L$(NCCL_BUILD_PATH)/lib/ -L/usr/local/cuda/lib64/ -lnccl -lcublas -lcurand -c -o $@.o && $(MPI_CXX) $@.o -L$(NCCL_BUILD_PATH)/lib -L/usr/local/cuda/lib64/ -lcudart -lnccl -lcublas -Wall -lcurand -lcudadevrt -std=c++11 -fopenmp -o $@
 
-sgd-fuse-rs-c-ag: sgd-fuse-rs-c-ag.cu
+model-parallel-fuse-rs-c-ag: model-parallel-fuse-rs-c-ag.cu
 
 clean:
-	rm sgd sgd-ar-c.cu sgd-ar-c sgd-rs-c-ag.cu sgd-rs-c-ag
+	rm model-parallel model-parallel-ar-c.cu model-parallel-ar-c model-parallel-rs-c-ag.cu model-parallel-rs-c-ag
