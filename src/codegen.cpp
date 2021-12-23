@@ -4387,7 +4387,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 "  ncclCommInitRank(&comm, comm_size, id, rank);\n";
             const std::string streamDecl = "  " + streamTy + " " + streamArg + ";\n" + "  cudaStreamCreate(&"+streamArg+");\n";
             const std::string cublasHandleDecl = indent(1) + cublasHandleTy + " "  + cublasHandleVar + ";\n" +
-                                                 indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+"))") + "\n" +
+                                                 indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+")") + "\n" +
                                                  indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") + "\n" +
                                                  indent(1) + cublasCheck("cublasSetMathMode(" + cublasHandleVar + ", CUBLAS_TENSOR_OP_MATH)");
 
@@ -4418,8 +4418,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                             }
                             mainFunc << "};" << std::endl;
                             std::string iteratorVar = "iter_"+varName;
-                            mainFunc << indent(indentLevel) << "for (int" << iteratorVar << " = 0" << "; " << 
-                                        iteratorVar << "< " << "sizeof(" << arrayVar << ")/sizeof(" << arrayVar[0] << ");" << 
+                            mainFunc << indent(indentLevel) << "for (int " << iteratorVar << " = 0" << "; " << 
+                                        iteratorVar << "< " << "sizeof(" << arrayVar << ")/sizeof(" << arrayVar<<"[0]" << ");" << 
                                         iteratorVar << "++) {" << std::endl;
                             indentLevel++;
                             mainFunc << indent(indentLevel) << "int " << varName << " = " << arrayVar << "[" << iteratorVar << "];" << std::endl;
