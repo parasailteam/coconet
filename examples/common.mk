@@ -3,3 +3,4 @@ SCHEDULE_FLAGS = -I../
 NCCL_PATH = ../../nccl/
 NCCL_BUILD_PATH = $(NCCL_PATH)/build
 MPI_CXX = /usr/bin/mpicxx
+GENCODE = "-gencode=arch=compute_70,code=sm_70"
