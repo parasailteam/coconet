@@ -21,7 +21,8 @@ void MM_AR_C()
     
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
 
-    pipeline.codegen("mm-ar-c.cu");
+    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {3072}), CodeGenVarBounds(H, {3072})};
+    pipeline.codegen("mm-ar-c.cu", varBounds);
 }
 
 void MM_RS_C_AG()

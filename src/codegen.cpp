@@ -3907,7 +3907,7 @@ void printIntermdiatesCUDAAlloc(std::vector<IntermediateStage>& intermediates, s
     freeCode = freeCodeStream.str();
 }
 
-void ACCCDSLImpl::NCCLCodegen::codegen()
+void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
 {
     /*Generate the reference function*/
     /*Print Function declaration*/
@@ -4389,9 +4389,35 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
             int indentLevel = 1;
             
             //For loop for different values of sizes to evaluate
-            mainFunc << indent(indentLevel) << "for (int __i = 10; __i < 30; __i++) {" << std::endl;
-            indentLevel++;
-            mainFunc << indent(indentLevel) << "size_t N = 1 << __i;" << std::endl;
+            if (varBounds.size() == 0) {
+                mainFunc << indent(indentLevel) << "for (int __i = 10; __i < 30; __i++) {" << std::endl;
+                indentLevel++;
+                mainFunc << indent(indentLevel) << "size_t N = 1 << __i;" << std::endl;
+            } else {
+                for (auto varBound : varBounds) {
+                    if (varBound.type_ == Values) {
+                        if (varBound.values_.size() == 1)
+                            mainFunc << indent(indentLevel) << "size_t " << varBound.var_.impl()->name() << " = " << varBound.values_[0] << ";" << std::endl;
+                        else {
+                            std::string varName = varBound.var_.impl()->name();
+                            std::string arrayVar = "array_"+varName;
+                            mainFunc << indent(indentLevel) << "int " << arrayVar << "[] = {";
+                            for (int i = 0; i < varBound.values_.size(); i++) {
+                                mainFunc << varBound.values_[i];
+                                if (i != varBound.values_.size() - 1)
+                                    mainFunc << ", ";
+                            }
+                            mainFunc << "};" << std::endl;
+                            std::string iteratorVar = "iter_"+varName;
+                            mainFunc << indent(indentLevel) << "for (int" << iteratorVar << " = 0" << "; " << 
+                                        iteratorVar << "< " << "sizeof(" << arrayVar << ")/sizeof(" << arrayVar[0] << ");" << 
+                                        iteratorVar << "++) {" << std::endl;
+                            indentLevel++;
+                            mainFunc << indent(indentLevel) << "int " << varName << " = " << arrayVar << "[" << iteratorVar << "];" << std::endl;
+                        }
+                    }
+                }
+            }
             mainFunc << indent(indentLevel) << "// Inputs" << std::endl;
             //Add declarations for tensors and allocate memory.
             for (auto iter = pipeline_.arguments().begin(); 
@@ -4486,9 +4512,20 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
             }
             printfTimeString << ");" << std::endl;
             mainFunc << indent(indentLevel) << printfTimeString.str();
-            //End size for loop
-            indentLevel--;
-            mainFunc << indent(indentLevel) << "}" << std::endl;
+            //End variables for loop
+             if (varBounds.size() == 0) {
+                indentLevel--;
+                mainFunc << indent(indentLevel) << "}" << std::endl;
+            } else {
+                for (auto varBound : varBounds) {
+                    if (varBound.type_ == Values) {
+                        if (varBound.values_.size() > 1) {
+                            indentLevel--;
+                            mainFunc << indent(indentLevel) << "}" << std::endl;
+                        }
+                    }
+                }
+            }
             //End main function block
             mainFunc << indent(indentLevel) << "MPI_Finalize();" << std::endl
                      << "}" << std::endl;

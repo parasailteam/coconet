@@ -461,6 +461,25 @@ namespace ACCCDSL {
         }
     };
 
+    enum CodeGenVarBoundsType {
+        IncrementRange,
+        LogRange,
+        Values
+    };
+
+    struct CodeGenVarBounds {        
+        Variable var_;
+        CodeGenVarBoundsType type_;
+        int start_;
+        int end_;
+        int increment_;
+        
+        std::vector<int> values_;
+        
+        CodeGenVarBounds(Variable var, int start, int end, int increment, CodeGenVarBoundsType type) : var_(var),  start_(start), end_(end), increment_(increment), type_(type) {}
+        CodeGenVarBounds(Variable var, std::vector<int> values) : var_(var), values_(values), type_(Values) {}
+    };
+
     class Pipeline {
         protected:
         std::set<std::shared_ptr<StageImpl>> stageOutputs_;
@@ -615,17 +634,20 @@ namespace ACCCDSL {
 
         void setAllStageStoreLoc();
         void codegen(std::string filename) 
+        {codegen(filename, {});}
+        void codegen(std::string filename, std::vector<ACCCDSLImpl::CodeGenVarBounds> varBounds) 
         {
             std::ofstream outputFile;
             outputFile.open(filename);
             if (outputFile.is_open()) {
-                codegen(outputFile);
+                codegen(outputFile, varBounds);
                 outputFile.close();
             } else {
                 std::cout << "Error opening file: " << filename << std::endl;
             }
         }
-        void codegen(std::ostream& os);
+
+        void codegen(std::ostream& os, std::vector<ACCCDSLImpl::CodeGenVarBounds> varBounds);
 
         Pipeline(const Pipeline& pipeline);
         ~Pipeline() 

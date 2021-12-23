@@ -122,7 +122,7 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
 
 int AstNodeImpl::nameCounter = 0;
 
-void Pipeline::codegen(std::ostream& os)
+void Pipeline::codegen(std::ostream& os, std::vector<ACCCDSLImpl::CodeGenVarBounds> varBounds)
 {
     //Create a map of Ast pointers to shared_ptr of Ast pointers
     for (auto iter : dslStageToPipelineStage) {
@@ -141,7 +141,7 @@ void Pipeline::codegen(std::ostream& os)
         }
     }
     NCCLCodegen codegen(*this, os);
-    codegen.codegen();
+    codegen.codegen(varBounds);
 }
 
 std::vector<Stage> stageImplsToStages(std::vector<std::shared_ptr<StageImpl>>& stageImpls)
