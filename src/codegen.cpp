@@ -474,14 +474,16 @@ std::string iteratorForDim(size_t dim)
 }
 
 
-std::string iteratorAccessString(size_t ndims)
+std::string iteratorAccessString(std::shared_ptr<ExpressionImpl> node)
 {
     std::string s = "";
-
-    for (size_t i = 0; i < ndims; i++) {
-        s += iteratorForDim(i);
-        if (i != ndims - 1)
-            s += "][";
+    
+    for (size_t i = 0; i < node->dims(); i++) {
+        auto iterAccess = iteratorForDim(i);
+        auto numElem = (i != node->dims() - 1) ? "*"+genNumElem(node, i+1, node->dims()): "";
+        s += iterAccess + numElem;
+        if (i != node->dims() - 1)
+            s += "+";
     }
 
     return s;
@@ -581,7 +583,7 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << ((generateCheck_ ? "__" : "") + node.name());
             if (!generateAsVars_) {
                 os_ << "[";
-                os_ << iteratorAccessString(node.dims());
+                os_ << iteratorAccessString(pipeline_.sharedPtrForAstPtr(&node));
                 os_ << "]";
             }
         }
@@ -700,7 +702,7 @@ class PointwiseOpCodegen : public AstVisitor
                 if (storageLoc != shptr && shptr->layout() == Sliced && storageLoc->layout() != Sliced) {
                     os_ << genNumElem(shptr) << " * " << rankVar << " + ";
                 }
-                os_ << iteratorAccessString(node.dims());
+                os_ << iteratorAccessString(pipeline_.sharedPtrForAstPtr(&node));
                 os_ << "]";
             }
         }
@@ -950,7 +952,7 @@ std::string generateReduceTensorCodeCPU(Pipeline& pipeline, std::shared_ptr<Stag
     
     //If we are checking the output, i.e., generateCheck is true, then
     //we prefix each stage name with "__"    
-    std::string accessStr = "[" + iteratorAccessString(output->dims()) + "]" ;
+    std::string accessStr = "[" + iteratorAccessString(output) + "]" ;
     //Print assignment to output stage
     codeStream << indent(indentLevel) << ("__" + output->name() + "[0]")
                << " = " << ("__" + output->name() + "[0]");
@@ -966,7 +968,7 @@ std::string generateReduceTensorCodeCPU(Pipeline& pipeline, std::shared_ptr<Stag
     codeStream << "__" << reduceTensor->arg()->name() <<accessStr << ";" << std::endl;
 
     if (generateCheck) {
-        iteratorAccessString(output->dims());
+        iteratorAccessString(output);
         std::string u = ("__" + output->name()) + accessStr;
         std::string v = "h" + output->name() + accessStr;
         codeStream << indent(indentLevel) << "if (!eqFloat(" << u << ", " << v << ")) {" << std::endl;
@@ -1029,13 +1031,13 @@ std::string generateOpCodeCPU(Pipeline& pipeline, std::shared_ptr<StageImpl> out
                                           pipeline, true, CodeType::MPI, isMixedPrecision(binOpNode));
     binOpCodegen.print(*binOpNode);
     
-    std::string accessStr = "[" + iteratorAccessString(output->dims()) + "]" ;
+    std::string accessStr = "[" + iteratorAccessString(output) + "]" ;
     //Print assignment to output stage
     codeStream << indent(indentLevel) << ("__" + output->name()) << accessStr
                << " = " << binopCodeStream.str() << ";" << std::endl;
 
     if (generateCheck) {
-        iteratorAccessString(output->dims());
+        iteratorAccessString(output);
         std::string u = ("__" + output->name()) + accessStr;
         std::string v = "h" + output->name() + accessStr;
         codeStream << indent(indentLevel) << "if (!eqFloat(" << u << ", " << v << ")) {" << std::endl;
@@ -1105,7 +1107,7 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
     //TODO: Improve this by using NVIDIA CUB, maybe?
     switch (reduceTensor->op()) {
         case Summation:
-            codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output->dims()) << "]);" << std::endl;
+            codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "]);" << std::endl;
             break;
         case Maximum:
         case Multiplication:
@@ -1249,7 +1251,7 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
 
     codeStream << indent(1);
     //TODO: Improve this by using NVIDIA CUB, maybe?
-    codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output->dims()) << "] * " << inputName << "[" << iteratorAccessString(output->dims()) << "]" << ");" << std::endl;
+    codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "] * " << inputName << "[" << iteratorAccessString(output) << "]" << ");" << std::endl;
     codeStream << "}";
 
     return CFunc({funcName, codeStream.str(), redOpInputs, true, NormNode});
@@ -1304,7 +1306,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> outpu
     //Print assignment to output stage
     std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
     codeStream << indent(1) << name;
-    codeStream << "[" << iteratorAccessString(output->dims()) << "]" 
+    codeStream << "[" << iteratorAccessString(output) << "]" 
                << " = " << binopCodeStream.str() << ";" << std::endl;
 
     codeStream << "}";
@@ -1391,7 +1393,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                             pipeline.explicitStoreLocations().at(output)->name();
             codeStream << indent(1) << name;
             if (pipeStage->getStorageLocation(output) == Memory) {
-                codeStream << "[" << iteratorAccessString(output->dims()) << "]" ;
+                codeStream << "[" << iteratorAccessString(output) << "]" ;
             }
             
             codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
