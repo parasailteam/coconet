@@ -4146,7 +4146,15 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     for (auto arg : pipeArgs) {
         os_ << printArgument(arg) << ", ";
     }
+    
+    std::vector<IntermediateStage> _intermStages = intermediateStages;
+    intermediateStages.clear();
 
+    for (int i = 0; i < _intermStages.size(); i++) {
+        if (pipeArgs.find(_intermStages[i].stageImpl) == pipeArgs.end()) {
+            intermediateStages.push_back(_intermStages[i]);
+        }
+    }
     //Add intermediates as argument to pipeline function
     for (auto interm : intermediateStages) {
         os_ << printArgument(interm.stageImpl) << ", ";
