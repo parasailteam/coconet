@@ -1178,8 +1178,8 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
     std::string cublasTypeC = elemTypeToCUBLASType(output->elemType());
 
     //Declare alpha and beta
-    codeStream << indent(1) << "float alpha = 1.0f" << std::endl
-               << indent(1) << "float beta = 0.0f" << std::endl;
+    codeStream << indent(1) << "float alpha = 1.0f;" << std::endl
+               << indent(1) << "float beta = 0.0f;" << std::endl;
     
     std::string M = genNumElem(output, 0, output->dimSizes().size() - 1);
     std::string N = genNumElem(output, output->dimSizes().size() - 1, output->dimSizes().size());
@@ -3876,7 +3876,7 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
     }
 
     if (stageDef->type() == MatMulNode)
-        call << ", " << cublasHandleTy << " " << cublasHandleVar;
+        call << ", " << cublasHandleVar;
     call << ", " << commSizeArg << ", " << rankVar << ")";
     kernelCall++;
     return call.str();
@@ -4157,7 +4157,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     }
     //Add intermediates as argument to pipeline function
     for (auto interm : intermediateStages) {
-        os_ << printArgument(interm.stageImpl) << ", ";
+        if (pipeArgs.find(interm.stageImpl) != pipeArgs.end())
+            os_ << printArgument(interm.stageImpl) << ", ";
     }
     //Time variables
     for (auto iter : psToNameAndTimeVar) {
