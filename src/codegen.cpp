@@ -867,6 +867,7 @@ struct CFunc {
     std::string body;
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
     bool isCUDA;
+    AstNodeType type;
 };
 
 struct CStruct {
@@ -1115,7 +1116,7 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
 
     codeStream << "}";
 
-    return CFunc({funcName, codeStream.str(), redOpInputs, true});
+    return CFunc({funcName, codeStream.str(), redOpInputs, true, ReduceTensorNode});
 }
 
 CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<MatMulImpl> matmul)
@@ -1195,7 +1196,7 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
     //TODO: Supports only 16 bit for now
     codeStream << indent(1) << cublasCheck(cublasCall.str()) << std::endl;
     codeStream << "}";
-    return CFunc({funcName, codeStream.str(), inputs, true});
+    return CFunc({funcName, codeStream.str(), inputs, true, MatMulNode});
 }
 
 CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<NormImpl> reduceTensor)
@@ -1251,7 +1252,7 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
     codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output->dims()) << "] * " << inputName << "[" << iteratorAccessString(output->dims()) << "]" << ");" << std::endl;
     codeStream << "}";
 
-    return CFunc({funcName, codeStream.str(), redOpInputs, true});
+    return CFunc({funcName, codeStream.str(), redOpInputs, true, NormNode});
 }
 
 CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
@@ -1308,7 +1309,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> outpu
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true});
+    return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, BinaryPointwiseOpNode});
 }
 
 CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
@@ -1399,7 +1400,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), arguments, true});
+    return CFunc({binOpFuncName, codeStream.str(), arguments, true, BinaryPointwiseOpNode});
 }
 
 std::string generateStageCompUsingMULTI(Pipeline& pipeline, std::shared_ptr<StageImpl> stage, std::shared_ptr<StageImpl> commCollStage, std::string funcName,
@@ -3874,6 +3875,8 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
         ii++;
     }
 
+    if (stageDef->type() == MatMulNode)
+        call << ", " << cublasHandleTy << " " << cublasHandleVar;
     call << ", " << commSizeArg << ", " << rankVar << ")";
     kernelCall++;
     return call.str();
@@ -4379,8 +4382,10 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                                                  indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") + "\n" +
                                                  indent(1) + cublasCheck("cublasSetMathMode(" + cublasHandleVar + ", CUBLAS_TENSOR_OP_MATH)");
 
-
-            mainFunc << mpiStartCode << "  " << epochDecl << streamDecl << "  " << mpibarrier << std::endl;
+            mainFunc << mpiStartCode << "  " << epochDecl << streamDecl;
+            if (useCUBLAS)
+                mainFunc << cublasHandleDecl << std::endl;
+            mainFunc << indent(1) << mpibarrier << std::endl;
             int indentLevel = 1;
             
             //For loop for different values of sizes to evaluate

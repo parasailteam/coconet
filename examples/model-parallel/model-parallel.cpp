@@ -26,34 +26,46 @@ void MM_AR_C()
 
 void MM_RS_C_AG()
 {
-//     Variable N(TensorElemType::Int32, "N");   
-//     Variable lr(TensorElemType::Float32, "lr");
-//     Tensor g(TensorElemType::Float32, N, Local, "g");
-//     Tensor w(TensorElemType::Float32, N, Replicated, "w");
+    Variable B(Int32, "B");
+    Variable S(Int32, "S");    
+    Variable H(Int32, "H");
 
-//     Stage g1 = ReduceScatter(Summation, g);
-//     Stage w1 = Scatter(w) - lr * g1;
-//     Stage w2 = Update(w, AllGather(w1));
+    Tensor w(Float16, {H,H}, Sliced, "w");
+    Tensor b(Float16, H, Replicated, "b");
+    Tensor in(Float16, {B,S,H}, Sliced_2, "in");
+    Tensor r(Float16, {B,S,H}, Replicated, "r");
 
-//     Pipeline pipeline("sgd", {g,w,lr}, {w2});
-    
-//     pipeline.codegen("sgd-rs-c-ag.cu");
+    Stage layer = MatMul(in,w);
+    Stage sumRS = ReduceScatter(Summation, layer);
+    Stage scOut = sumRS + Scatter(r);
+    Stage out = AllGather(scOut);
+
+    Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
+
+    pipeline.codegen("mm-rs-c-ag.cu");
 }
 
 void ol_MM_fuse_RS_C_AG()
 {
-//     Variable N(TensorElemType::Int32, "N");   
-//     Variable lr(TensorElemType::Float32, "lr");
-//     Tensor g(TensorElemType::Float32, N, Local, "g");
-//     Tensor w(TensorElemType::Float32, N, Replicated, "w");
+    // Variable B(Int32, "B");
+    // Variable S(Int32, "S");    
+    // Variable H(Int32, "H");
 
-//     Stage g1 = ReduceScatter(Summation, g);
-//     Stage w1 = Scatter(w) - lr * g1;
-//     Stage w2 = Update(w, AllGather(w1));
+    // Tensor w(Float16, {H,H}, Sliced, "w");
+    // Tensor b(Float16, H, Replicated, "b");
+    // Tensor in(Float16, {B,S,H}, Sliced_2, "in");
+    // Tensor r(Float16, {B,S,H}, Replicated, "r");
 
-//     Pipeline pipeline("sgd", {g,w,lr}, {w2});
-//     pipeline.fuse({g1, w1, w2});
-//     pipeline.codegen("sgd-fuse-rs-c-ag.cu");
+    // Stage layer = MatMul(in,w);
+    // Stage sumRS = ReduceScatter(Summation, layer);
+    // Stage scOut = sumRS + Scatter(r);
+    // Stage out = AllGather(scOut);
+
+    // Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
+
+    // pipeline.fuse({sumRS, scOut, sumAg});
+    // pipeline.overlap(layer, {sumRS, scOut, sumAg});
+    // pipeline.codegen("mm-overlap-mm-fuse-rs-c-ag.cu");
 }
 
 int main(int argc, char* argv[])

@@ -8,7 +8,7 @@ model-parallel: model-parallel.cpp
 model-parallel-mm-ar-c.cu: model-parallel
 	./model-parallel MM_AR_C
 
-model-parallel-rs-c-ag.cu: model-parallel
+model-parallel-mm-rs-c-ag.cu: model-parallel
 	./model-parallel MM_RS_C_AG
 
 model-parallel-fuse-rs-c-ag.cu: model-parallel
