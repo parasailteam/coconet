@@ -42,8 +42,9 @@ void MM_RS_C_AG()
     Stage out = AllGather(scOut);
 
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
-
-    pipeline.codegen("model-parallel-mm-rs-c-ag.cu");
+    
+    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {3072}), CodeGenVarBounds(H, {3072})};
+    pipeline.codegen("model-parallel-mm-rs-c-ag.cu", varBounds);
 }
 
 void ol_MM_fuse_RS_C_AG()
