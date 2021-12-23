@@ -4483,6 +4483,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 mainFunc << iter.second.second << ", ";
             }
             mainFunc << commArg << ", " << streamArg << ", " << commSizeArg << ", " << rankVar;
+            if (useCUBLAS)
+                mainFunc << ", " << cublasHandleVar;
             mainFunc << "); "<< std::endl;
             
             //Add mpiref function call
@@ -4502,14 +4504,30 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             }
             mainFunc << intermFreeCode;
             std::stringstream printfTimeString;
-            printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{SZ: %ld, Epochs: %d, ";
+            if (varBounds.size() == 0)
+                printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{SZ: %ld, Epochs: %d, ";
+            else {
+                std::string varBoundsPrintfFmt = "";
+                for (auto varBound : varBounds) {
+                    varBoundsPrintfFmt += varBound.var_.impl()->name() + ": %d, ";
+                }
+                printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{" << varBoundsPrintfFmt << "Epochs: %d, ";
+            }
 
             for (auto iter : psToNameAndTimeVar) {
                 printfTimeString << iter.second.first << ": %f, ";
             }
             
             printfTimeString << "Total: %f}\\n\", ";
-            printfTimeString << "N, " << "epochs, ";
+
+            if (varBounds.size() == 0)
+                printfTimeString << "N, " << "epochs, ";
+            else {
+                std::string vars = "";
+                for (auto varBound : varBounds)
+                    vars += varBound.var_.impl()->name() + ", ";
+                printfTimeString << vars << "epochs, ";
+            }
 
             for (auto iter : psToNameAndTimeVar) {
                 printfTimeString << iter.second.second << ", ";
