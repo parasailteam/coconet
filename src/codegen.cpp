@@ -4552,7 +4552,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             else {
                 std::string varBoundsPrintfFmt = "";
                 for (auto varBound : varBounds) {
-                    varBoundsPrintfFmt += varBound.var_.impl()->name() + ": %d, ";
+                    varBoundsPrintfFmt += varBound.var_.impl()->name() + ": %ld, ";
                 }
                 printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{" << varBoundsPrintfFmt << "Epochs: %d, ";
             }
