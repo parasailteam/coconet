@@ -67,7 +67,9 @@ void ol_MM_fuse_RS_C_AG()
 
     pipeline.fuse({sumRS, scOut, out});
     pipeline.overlap({layer, sumRS, scOut, out});
-    pipeline.codegen("model-parallel-ol-mm-fuse-rs-c-ag.cu");
+
+    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {3072}), CodeGenVarBounds(H, {3072})};
+    pipeline.codegen("model-parallel-ol-mm-fuse-rs-c-ag.cu", varBounds);
 }
 
 int main(int argc, char* argv[])

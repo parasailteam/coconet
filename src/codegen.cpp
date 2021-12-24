@@ -4104,17 +4104,19 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         agStage = outStage;
                     }
                 }
-
+                
                 ASSERT(matmulStage != nullptr, "");
                 CFunc cfunc = generateCUBLASMatMul(pipeline_, matmulStage, AstNodeImpl::asMatMulImpl(matmulStage->definition()));
                 subFunctions.push_back(cfunc);
+                useCUBLAS = true;
+                intermediateStages.push_back({matmulStage, true});
+                
                 funcBody << genCUDAFuncCall(matmulStage, cfunc, streamArg, 1)<<";"<<std::endl;
                 std::shared_ptr<ReduceScatterImpl> rsStageDef = AstNodeImpl::asReduceScatterImpl(rsStage->definition());
                 std::shared_ptr<AllGatherImpl> agStageDef = AstNodeImpl::asAllGatherImpl(agStage->definition());
                 funcBody << indent(1) << "ncclAllReduce(" << rsStageDef->arg()->name() << ", " << agStage->name() << ", " << 
                             genNumElem(agStageDef) << ", " << elemTypeToNCCLType(rsStageDef->arg()->elemType()) << "," << 
                             redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
-
             } else {
                 for (auto outStage : pipelineStage->stages()) {
                     std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
