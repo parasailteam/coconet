@@ -3889,6 +3889,20 @@ struct IntermediateStage {
     bool requiresAlloc;
 };
 
+bool isStageAnIntermediate(std::vector<IntermediateStage>& intermStages, std::shared_ptr<ExpressionImpl> stage)
+{
+    if (stage->type() != StageNode)
+        return false;
+
+    for (auto interm : intermStages) {
+        if (interm.stageImpl == AstNodeImpl::asStageImpl(stage)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void printIntermdiatesCUDAAlloc(std::vector<IntermediateStage>& intermediates, std::string& declCode, 
                                 std::string& allocCode, std::string& freeCode, int indentLevel)
 {
@@ -3971,6 +3985,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         * */
         if (pipelineStage->stages().size() == 1) {
             //If there is only one stage
+            bool inPlace = false;
+
             for (auto outStage : pipelineStage->stages()) {
                 std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();                
                 if (stageDef->type() == UpdateNode)
@@ -3984,6 +4000,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                             genNumElem(allReduceColl->arg()) << ", " << elemTypeToNCCLType(allReduceColl->arg()->elemType()) << "," << 
                             redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllReduce";
+                        inPlace = true;
                         break;
                     }
                     case AllGatherNode: {
@@ -4124,10 +4141,15 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     //Remove all storeAt's target and add source
 
     for (auto it : pipeline_.explicitStoreLocations()) {
-        outputArgs.erase(it.first);
-        outputArgs.insert(it.second);
-        pipeArgs.erase(it.first);
-        pipeArgs.insert(it.second);
+        if (pipeline_.outputs().count(it.first) > 0) {
+            outputArgs.erase(it.first);
+            outputArgs.insert(it.second);
+        }
+        
+        if (!isStageAnIntermediate(intermediateStages, it.second)) {
+            pipeArgs.erase(it.first);
+            pipeArgs.insert(it.second);
+        }
     }
 
     auto pipeDimExprs = allDimExprs(pipeArgs.begin(), pipeArgs.end());
@@ -4136,7 +4158,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     for (auto iter : pipeline_.arguments()) {
         pipeArgs.insert(iter);
     }
-
+    
     /*Print sub functions (CUDA kernels)*/
     for (auto& cfunc : subFunctions) {
         os_ << cfunc.body << std::endl << std::endl;
@@ -4148,19 +4170,10 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     for (auto arg : pipeArgs) {
         os_ << printArgument(arg) << ", ";
     }
-    
-    std::vector<IntermediateStage> _intermStages = intermediateStages;
-    intermediateStages.clear();
 
-    for (int i = 0; i < _intermStages.size(); i++) {
-        if (pipeArgs.find(_intermStages[i].stageImpl) == pipeArgs.end()) {
-            intermediateStages.push_back(_intermStages[i]);
-        }
-    }
     //Add intermediates as argument to pipeline function
     for (auto interm : intermediateStages) {
-        if (pipeArgs.find(interm.stageImpl) != pipeArgs.end())
-            os_ << printArgument(interm.stageImpl) << ", ";
+        os_ << printArgument(interm.stageImpl) << ", ";
     }
     //Time variables
     for (auto iter : psToNameAndTimeVar) {
