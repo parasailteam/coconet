@@ -31,24 +31,7 @@
   } \
 } while (0)
 
-#define TYPE_PRIMS 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#define TYPE_PRIMS 
 #if TYPE_PRIMS == 0
 
 // Implementation of primitive types

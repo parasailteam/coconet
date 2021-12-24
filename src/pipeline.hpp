@@ -91,7 +91,7 @@ namespace ACCCDSL {
             std::shared_ptr<FuseOverlapNode> child;
         };
         
-        std::shared_ptr<FuseOverlapNode> fuseOverlapDAG;
+        std::shared_ptr<FuseOverlapNode> fuseOverlapDAG_;
         int topoOrder_;
         std::unordered_map<std::shared_ptr<StageImpl>, StageStoreLocation> stageStoreLoc_;
         CollCommOperationType fusedIntoCollComm_;
@@ -100,7 +100,7 @@ namespace ACCCDSL {
 
     public:
         PipelineStage(std::shared_ptr<StageImpl> stage) : PipelineStage(std::vector<std::shared_ptr<StageImpl>>{stage}){}
-        PipelineStage(std::vector<std::shared_ptr<StageImpl>> stages) : stages_(stages), fusedIntoCollComm_(NoneCollCommOp), type_(Single), fuseOverlapDAG(nullptr) {} 
+        PipelineStage(std::vector<std::shared_ptr<StageImpl>> stages) : stages_(stages), fusedIntoCollComm_(NoneCollCommOp), type_(Single), fuseOverlapDAG_(nullptr) {} 
 
         PipelineStageType type() {return type_;}
         void setType(PipelineStageType _type) {type_ = _type;}
@@ -120,7 +120,7 @@ namespace ACCCDSL {
             auto iter = std::find(stages_.begin(), stages_.end(), stage);
             if (iter != stages_.end())
                 stages_.erase(iter);
-            FuseOverlapNode* node = fuseOverlapDAG.get();
+            FuseOverlapNode* node = fuseOverlapDAG_.get();
 
             while (node != nullptr) {
                 auto iter = std::find(node->stages.begin(), node->stages.end(), stage);
@@ -134,7 +134,7 @@ namespace ACCCDSL {
         {
             std::shared_ptr<FuseOverlapNode> newHead;
             std::vector<std::shared_ptr<StageImpl>> _stages;
-            if (prevPS->fuseOverlapDAG == nullptr) {
+            if (prevPS->fuseOverlapDAG_ == nullptr) {
                 //Handle first fusion/overlap of 2 or more nodes by creating a new fuse/overlap DAG in prevPS
                 _stages = std::vector<std::shared_ptr<StageImpl>>(stages());
                 auto prevStages = prevPS->stages();
@@ -144,10 +144,10 @@ namespace ACCCDSL {
                 _stages = stages();
             }
 
-            newHead = std::shared_ptr<FuseOverlapNode>(new FuseOverlapNode{combinationType, _stages, nullptr, prevPS->fuseOverlapDAG});
-            if (prevPS->fuseOverlapDAG)
-                prevPS->fuseOverlapDAG->parent = newHead;
-            fuseOverlapDAG = newHead;
+            newHead = std::shared_ptr<FuseOverlapNode>(new FuseOverlapNode{combinationType, _stages, nullptr, prevPS->fuseOverlapDAG_});
+            if (prevPS->fuseOverlapDAG_)
+                prevPS->fuseOverlapDAG_->parent = newHead;
+            fuseOverlapDAG_ = newHead;
         }
 
         bool usesExpr(ExpressionImpl* expr) 
@@ -434,7 +434,7 @@ namespace ACCCDSL {
                     printer.print(*s);
                 }
             } else {
-                FuseOverlapNode* node = fuseOverlapDAG.get();
+                FuseOverlapNode* node = fuseOverlapDAG_.get();
                 // std::stack<FuseOverlapNode*> nodeStack;
                 //FIXME: do this recursively in a function
                 while (node != nullptr) {
@@ -533,7 +533,7 @@ namespace ACCCDSL {
         
         /**Transformations**/
         void fuse(std::vector<Stage> stagesToFuse);
-        void overlap(std::vector<Stage> stagesToOverlap);
+        void overlap(std::vector<Stage> stages);
         void asSlice(std::vector<Tensor> replicatedInputs);
         void asSlice(Tensor replicatedInput) {asSlice(std::vector<Tensor>({replicatedInput}));}
         //ReduceScatter stage and allgather stage

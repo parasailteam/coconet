@@ -9,24 +9,7 @@
 #include "collectives.h"
 #include <cooperative_groups.h>
 
-#define TYPE_ALL_REDUCE 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#define TYPE_ALL_REDUCE 
 #if TYPE_ALL_REDUCE == 0
 
 template<int UNROLL, class FUNC, typename T>

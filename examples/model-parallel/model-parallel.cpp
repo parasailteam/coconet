@@ -49,25 +49,25 @@ void MM_RS_C_AG()
 
 void ol_MM_fuse_RS_C_AG()
 {
-    // Variable B(Int32, "B");
-    // Variable S(Int32, "S");    
-    // Variable H(Int32, "H");
+    Variable B(Int32, "B");
+    Variable S(Int32, "S");    
+    Variable H(Int32, "H");
 
-    // Tensor w(Float16, {H,H}, Sliced, "w");
-    // Tensor b(Float16, H, Replicated, "b");
-    // Tensor in(Float16, {B,S,H}, Sliced_2, "in");
-    // Tensor r(Float16, {B,S,H}, Replicated, "r");
+    Tensor w(Float16, {H,H}, Sliced, "w");
+    Tensor b(Float16, H, Replicated, "b");
+    Tensor in(Float16, {B,S,H}, Sliced_2, "in");
+    Tensor r(Float16, {B,S,H}, Replicated, "r");
 
-    // Stage layer = MatMul(in,w);
-    // Stage sumRS = ReduceScatter(Summation, layer);
-    // Stage scOut = sumRS + Scatter(r);
-    // Stage out = AllGather(scOut);
+    Stage layer = MatMul(in,w);
+    Stage sumRS = ReduceScatter(Summation, layer);
+    Stage scOut = sumRS + Scatter(r);
+    Stage out = AllGather(scOut);
 
-    // Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
+    Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
 
-    // pipeline.fuse({sumRS, scOut, sumAg});
-    // pipeline.overlap(layer, {sumRS, scOut, sumAg});
-    // pipeline.codegen("mm-overlap-mm-fuse-rs-c-ag.cu");
+    pipeline.fuse({sumRS, scOut, out});
+    pipeline.overlap({layer, sumRS, scOut, out});
+    pipeline.codegen("model-parallel-ol-mm-fuse-rs-c-ag.cu");
 }
 
 int main(int argc, char* argv[])
@@ -83,10 +83,10 @@ int main(int argc, char* argv[])
         MM_AR_C();
     else if (schedule == "MM_RS_C_AG")
         MM_RS_C_AG();
-    else if (schedule == "OL_MM_fuse_RS_C_AG")
+    else if (schedule == "ol_MM_fuse_RS_C_AG")
         ol_MM_fuse_RS_C_AG();
     else 
-        std::cout << "Invalid schedule" << std::endl;
+        std::cout << "Invalid schedule '" << schedule << "'" << std::endl;
 
     return 0;
 }

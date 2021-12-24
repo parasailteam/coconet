@@ -4088,35 +4088,64 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 }
             }
         } else {
-            for (auto outStage : pipelineStage->stages()) {
-                std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
-                if (stageDef->isCommCollective()) {
-                    hasACommCollStage = true;
-                    break;
-                }
-            }
+            //Traverse the internal pipeline stage DAG to generate overlapped and/or fused stages
+            if (pipeline_.name() == "model_parallel") {
+                std::shared_ptr<StageImpl> matmulStage = nullptr;
+                std::shared_ptr<StageImpl> rsStage = nullptr;
+                std::shared_ptr<StageImpl> agStage = nullptr;
 
-            if (hasACommCollStage) {
-                funcBody << indent(1) << generateFusedNCCLCommColl(pipeline_, pipelineStage) << std::endl;
-                pipelineStageName = "FusedAllReduce";
-            } else {
-                CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
+                for (auto outStage : pipelineStage->stages()) {
+                    std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
+                    if (stageDef->type() == MatMulNode) {
+                        matmulStage = outStage;
+                    } else if (stageDef->type() == ReduceScatterNode) {
+                        rsStage = outStage;
+                    } else if (stageDef->type() == AllGatherNode) {
+                        agStage = outStage;
+                    }
+                }
+
+                ASSERT(matmulStage != nullptr, "");
+                CFunc cfunc = generateCUBLASMatMul(pipeline_, matmulStage, AstNodeImpl::asMatMulImpl(matmulStage->definition()));
                 subFunctions.push_back(cfunc);
-                std::shared_ptr<StageImpl> sliceStage = nullptr;
-                for (auto stage : pipelineStage->stages()) {
-                    if (stage->layout() == Sliced) {
-                        sliceStage = stage;
+                funcBody << genCUDAFuncCall(matmulStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                std::shared_ptr<ReduceScatterImpl> rsStageDef = AstNodeImpl::asReduceScatterImpl(rsStage->definition());
+                std::shared_ptr<AllGatherImpl> agStageDef = AstNodeImpl::asAllGatherImpl(agStage->definition());
+                funcBody << indent(1) << "ncclAllReduce(" << rsStageDef->arg()->name() << ", " << agStage->name() << ", " << 
+                            genNumElem(agStageDef) << ", " << elemTypeToNCCLType(rsStageDef->arg()->elemType()) << "," << 
+                            redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
+
+            } else {
+                for (auto outStage : pipelineStage->stages()) {
+                    std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
+                    if (stageDef->isCommCollective()) {
+                        hasACommCollStage = true;
+                        break;
                     }
                 }
-                if (sliceStage == nullptr) sliceStage = pipelineStage->stages()[0];
-                funcBody << genCUDAFuncCall(sliceStage, cfunc, streamArg, 1)<<";"<<std::endl;
-                for (auto liveout : pipelineStage->liveoutStages(pipeline_.outputs())) {
-                    //Add liveouts that are not output as intermediate
-                    if (pipeline_.outputs().count(liveout) == 0) {
-                        intermediateStages.push_back({liveout, true});
+
+                if (hasACommCollStage) {
+                    funcBody << indent(1) << generateFusedNCCLCommColl(pipeline_, pipelineStage) << std::endl;
+                    pipelineStageName = "FusedAllReduce";
+                } else {
+                    CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
+                    subFunctions.push_back(cfunc);
+                    std::shared_ptr<StageImpl> sliceStage = nullptr;
+                    for (auto stage : pipelineStage->stages()) {
+                        if (stage->layout() == Sliced) {
+                            sliceStage = stage;
+                        }
                     }
+                    if (sliceStage == nullptr) sliceStage = pipelineStage->stages()[0];
+                    funcBody << genCUDAFuncCall(sliceStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                    for (auto liveout : pipelineStage->liveoutStages(pipeline_.outputs())) {
+                        //Add liveouts that are not output as intermediate
+                        if (pipeline_.outputs().count(liveout) == 0) {
+                            intermediateStages.push_back({liveout, true});
+                        }
+                    }
+                    pipelineStageName = cfunc.name;
                 }
-                pipelineStageName = cfunc.name;
             }
         }
 

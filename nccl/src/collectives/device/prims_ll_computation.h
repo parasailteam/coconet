@@ -1,21 +1,4 @@
-#define TYPE_PRIMS_LL 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#define TYPE_PRIMS_LL 
 #if TYPE_PRIMS_LL == 0
 
 template <typename TF16, class FUNCF16, typename TF32, typename FUNCF32, int NRECV, int NSEND>

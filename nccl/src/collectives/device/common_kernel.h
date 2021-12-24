@@ -14,24 +14,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
-#define TYPE_COMMON_KERNEL 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#define TYPE_COMMON_KERNEL 
 #if TYPE_COMMON_KERNEL == 0
 
   // Define min for ssize_t
