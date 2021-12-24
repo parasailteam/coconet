@@ -542,7 +542,6 @@ class PointwiseOpCodegen : public AstVisitor
 {
     private:
         std::stringstream& os_;
-        std::vector<std::string> iterators_;
         PipelineStage* pipeStage_;
         Pipeline& pipeline_;
         bool generateCheck_;
@@ -553,18 +552,17 @@ class PointwiseOpCodegen : public AstVisitor
         CodeType codeType_;
 
     public:
-        PointwiseOpCodegen(std::stringstream& os, std::vector<std::string> iterators,
-                                 PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
-                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), explicitType_(None), os_(os), iterators_(iterators), 
+        PointwiseOpCodegen(std::stringstream& os, PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
+                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), explicitType_(None), os_(os),
                                  pipeStage_(pipeStage), pipeline_(pipeline), generateCheck_(generateCheck), codeType_(codeType),
                                  generateAsVars_(generateAsVars), mixedPrecisionCasts_(mixedPrecisionCasts) {}
-        PointwiseOpCodegen(std::stringstream& os, std::vector<std::string> iterators, Pipeline& pipeline, bool generateCheck,
+        PointwiseOpCodegen(std::stringstream& os, Pipeline& pipeline, bool generateCheck,
                                  CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
-            os_(os), iterators_(iterators), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
+            os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
             useHalf2(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
         PointwiseOpCodegen(std::stringstream& os, std::string iterator, Pipeline& pipeline, bool generateCheck, 
                                  CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
-            os_(os), iterators_({iterator}), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
+            os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
             useHalf2(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
 
         void print(ExpressionImpl& node) {
@@ -583,7 +581,7 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << ((generateCheck_ ? "__" : "") + node.name());
             if (!generateAsVars_) {
                 os_ << "[";
-                os_ << iteratorAccessString(pipeline_.sharedPtrForAstPtr(&node));
+                os_ << iteratorForDim(0);
                 os_ << "]";
             }
         }
@@ -609,14 +607,14 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << "(";
             if (codeType_ == CodeType::CUDA && (explicitType_ == TensorElemType::Float16)) {
                 std::stringstream os0;
-                PointwiseOpCodegen codegen0(os0, iterators_, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
+                PointwiseOpCodegen codegen0(os0, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
                 codegen0.setExplicitType(explicitType_);
                 if (useHalf2)
                     codegen0.setHalf2Type();
                 node.operand(0)->accept(codegen0);
 
                 std::stringstream os1;
-                PointwiseOpCodegen codegen1(os1, iterators_, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
+                PointwiseOpCodegen codegen1(os1, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
                 codegen1.setExplicitType(explicitType_);
                 if (useHalf2)
                     codegen1.setHalf2Type();
@@ -702,7 +700,7 @@ class PointwiseOpCodegen : public AstVisitor
                 if (storageLoc != shptr && shptr->layout() == Sliced && storageLoc->layout() != Sliced) {
                     os_ << genNumElem(shptr) << " * " << rankVar << " + ";
                 }
-                os_ << iteratorAccessString(pipeline_.sharedPtrForAstPtr(&node));
+                os_ << iteratorForDim(0);
                 os_ << "]";
             }
         }
@@ -1027,8 +1025,7 @@ std::string generateOpCodeCPU(Pipeline& pipeline, std::shared_ptr<StageImpl> out
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
-                                          pipeline, true, CodeType::MPI, isMixedPrecision(binOpNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, true, CodeType::MPI, isMixedPrecision(binOpNode));
     binOpCodegen.print(*binOpNode);
     
     std::string accessStr = "[" + iteratorAccessString(output) + "]" ;
@@ -1294,19 +1291,21 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> outpu
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
-    std::string varIterator = iteratorInit(binOpNode->dims(), indent(1));
+
+    //All code generated for binary operations will be single dimension.
+    std::string varIterator = iteratorInit(1, indent(1));
 
     codeStream << varIterator << std::endl;
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), pipeline, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, false, CodeType::CUDA, isMixedPrecision(binOpNode));
     binOpCodegen.print(*binOpNode);
     
     //Print assignment to output stage
     std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
     codeStream << indent(1) << name;
-    codeStream << "[" << iteratorAccessString(output) << "]" 
+    codeStream << "[" << iteratorForDim(0) << "]" 
                << " = " << binopCodeStream.str() << ";" << std::endl;
 
     codeStream << "}";
@@ -1365,8 +1364,8 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     //Function body
     //Iterator initialization from threadIdx and blockIdx
 
-    //TODO: We assume that all binaryopnodes have same dimensions
-    codeStream << iteratorInit(outStages[0]->dims(), indent(1)) << std::endl;
+    //Generate single dimension code for binary pointwise 
+    codeStream << iteratorInit(0, indent(1)) << std::endl;
     
     //Print All Binary Operations
     for (size_t it = 0; it < outStages.size(); it++) {
@@ -1381,7 +1380,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
             }
         } else {    
             std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
-            PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
+            PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                         pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
             binOpCodegen.print(*binOpNode);
             //Print assignment to output stage
@@ -1393,7 +1392,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                             pipeline.explicitStoreLocations().at(output)->name();
             codeStream << indent(1) << name;
             if (pipeStage->getStorageLocation(output) == Memory) {
-                codeStream << "[" << iteratorAccessString(output) << "]" ;
+                codeStream << "[" << iteratorForDim(0) << "]" ;
             }
             
             codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
@@ -1498,7 +1497,7 @@ std::string funcBodyForFusedBinOpCommCollCodeForNCCL(Pipeline& pipeline, Pipelin
     //If there is a cast operation from a smaller bitwidth Stage 
     //to a larger bitwidth Stage then we consider that as a mixed precision.
     
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(output->definition()->dims()), 
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                           pipeStage, pipeline, false, true, CodeType::CUDA, 
                                           mixedPrecisionCasts);
     if (type == "half" || type == "half2") {
