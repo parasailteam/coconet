@@ -4093,6 +4093,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 std::shared_ptr<StageImpl> matmulStage = nullptr;
                 std::shared_ptr<StageImpl> rsStage = nullptr;
                 std::shared_ptr<StageImpl> agStage = nullptr;
+                pipelineStageName = "overlap";
 
                 for (auto outStage : pipelineStage->stages()) {
                     std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
