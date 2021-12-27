@@ -122,7 +122,7 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
 
 int AstNodeImpl::nameCounter = 0;
 
-void Pipeline::codegen(std::ostream& os)
+void Pipeline::codegen(std::ostream& os, std::vector<ACCCDSLImpl::CodeGenVarBounds> varBounds)
 {
     //Create a map of Ast pointers to shared_ptr of Ast pointers
     for (auto iter : dslStageToPipelineStage) {
@@ -141,7 +141,7 @@ void Pipeline::codegen(std::ostream& os)
         }
     }
     NCCLCodegen codegen(*this, os);
-    codegen.codegen();
+    codegen.codegen(varBounds);
 }
 
 std::vector<Stage> stageImplsToStages(std::vector<std::shared_ptr<StageImpl>>& stageImpls)
@@ -392,11 +392,11 @@ bool Pipeline::checkIfAllStagesAreFused(std::vector<Stage> stages)
     return true;
 }
 
-void Pipeline::overlap(std::vector<Stage> stagesToOverlap) 
+void Pipeline::overlap(std::vector<Stage> stages) 
 {
-    ASSERT(checkIfAllStagesAreFused(stagesToOverlap), "Valid only when all stages of a fused stage are specified.");
+    ASSERT(checkIfAllStagesAreFused(stages), "Valid only when all stages of a fused stage are specified.");
     std::vector<std::shared_ptr<StageImpl>> stageImpls;
-    for (auto stage : stagesToOverlap) {
+    for (auto stage : stages) {
         stageImpls.push_back(stage.impl());
     }
     overlap(stageImpls);
@@ -927,18 +927,18 @@ Pipeline::Pipeline(const Pipeline& pipeline) :
     
     //Recreate internal DAG of each pipeline stage
     for (auto iter : oldToNewPipelineStage) {
-        if (iter.first->fuseOverlapDAG == nullptr)
+        if (iter.first->fuseOverlapDAG_ == nullptr)
             continue;
         
-        std::shared_ptr<PipelineStage::FuseOverlapNode> node = iter.first->fuseOverlapDAG;
+        std::shared_ptr<PipelineStage::FuseOverlapNode> node = iter.first->fuseOverlapDAG_;
         std::vector<std::shared_ptr<StageImpl>> newStages;
         for (auto oldStage : node->stages) {
             auto newStage = AstNodeImpl::asStageImpl(cloneVisitor.origToCloneMap().at(oldStage.get()));
             newStages.push_back(newStage);
         }
-        iter.second->fuseOverlapDAG = std::shared_ptr<PipelineStage::FuseOverlapNode>(
+        iter.second->fuseOverlapDAG_ = std::shared_ptr<PipelineStage::FuseOverlapNode>(
                 new PipelineStage::FuseOverlapNode{node->type, newStages, nullptr, nullptr});
-        auto parent = iter.second->fuseOverlapDAG;
+        auto parent = iter.second->fuseOverlapDAG_;
         node = node->child;
 
         while (node != nullptr) {

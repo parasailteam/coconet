@@ -1,19 +1,4 @@
-#define TYPE_PRIMS_LL 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#define TYPE_PRIMS_LL 0
 
 
 #if TYPE_PRIMS_LL == 0

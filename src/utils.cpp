@@ -47,6 +47,29 @@ std::string elemTypeToCType(ACCCDSL::TensorElemType t)
     }
 }
 
+std::string elemTypeToCUBLASType(ACCCDSL::TensorElemType t)
+{
+    switch (t) {
+        case ACCCDSL::TensorElemType::Float16:
+            return "CUDA_R_16F";
+        case ACCCDSL::TensorElemType::Float32:
+            return "CUDA_R_32F";
+        case ACCCDSL::TensorElemType::Float64:
+            return "CUDA_R_64F";
+        case ACCCDSL::TensorElemType::Int8:
+            return "CUDA_C_8I";
+        case ACCCDSL::TensorElemType::Int16:
+            return "CUDA_C_16I";
+        case ACCCDSL::TensorElemType::Int32:
+            return "CUDA_C_32I";
+        case ACCCDSL::TensorElemType::Int64:
+            return "CUDA_C_64I";
+        default:
+            ASSERT(false, "Unimplemented type");
+            return "";
+    }
+}
+
 std::string elemTypeToNCCLType(ACCCDSL::TensorElemType t)
 {
     switch (t) {
@@ -133,4 +156,13 @@ std::string redOpToMPIReduceOp(ACCCDSL::ReduceOperation op)
             ASSERT(false, "Unimplemented reduction type");
             return "";
     }
+}
+
+std::string replaceAllSubString(std::string& s, std::string subs, std::string replacement)
+{
+    while(s.find(subs) != s.npos) {
+        s = s.replace(s.find(subs), subs.size(), replacement);
+    }
+
+    return s;
 }

@@ -17,19 +17,7 @@ ncclResult_t ncclAllReduce(const void* sendbuff, void* recvbuff, size_t count,
   return ncclEnqueueCheck(&info);
 }
 
-#define TYPE_ALL_REDUCE 1
-
-
-
-
-
-
-
-
-
-
-
-
+#define TYPE_ALL_REDUCE 0
 
 
 #if TYPE_ALL_REDUCE == 0

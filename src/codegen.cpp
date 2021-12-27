@@ -20,6 +20,8 @@ const std::string rankVarTy = "int";
 const std::string rankString = "rank";
 const std::string commSizeArg = "comm_size";
 const std::string commSizeTy = "int";
+const std::string cublasHandleVar = "cublasHandle";
+const std::string cublasHandleTy = "cublasHandle_t";
 
 class NumElemGen : public AstVisitor
 {
@@ -123,10 +125,11 @@ class NumElemGen : public AstVisitor
         }  
 };
 
-std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
+//Print from startDim to endDim (not including)
+std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim, int endDim)
 {
     std::stringstream numElemStream;
-    if (numElemExpr->layout() == Sliced)
+    if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
         numElemStream << "DIVUP(";
 
     if (numElemExpr->dimSizes().size() == 1) {
@@ -135,20 +138,31 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
     } else {
         numElemStream << "(";
         for (auto iter = numElemExpr->dimSizes().begin(); iter != numElemExpr->dimSizes().end();) {
+            if (iter - numElemExpr->dimSizes().begin() < startDim) {
+                iter++;
+                continue;
+            }
+            if (iter - numElemExpr->dimSizes().begin() >= endDim)
+                break;
             NumElemGen numElemGen(numElemStream);
             numElemGen.print(*(*iter).get());   
             iter++;
-            if (iter != numElemExpr->dimSizes().end()) {
+            if (iter - numElemExpr->dimSizes().begin() != endDim) {
                 numElemStream << "*";
             }
         }
         numElemStream << ")";
     }
     
-    if (numElemExpr->layout() == Sliced)
+    if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
         numElemStream << ", comm_size)";
 
     return numElemStream.str();
+}
+
+std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
+{
+    return genNumElem(numElemExpr, 0, numElemExpr->dimSizes().size());
 }
 
 template<typename T>
@@ -312,15 +326,6 @@ uint64_t currOrNextPowerOf2(uint64_t num) {
     return nextPowerOf2(num);
 }
 
-std::string& replaceAllSubString(std::string& s, std::string subs, std::string replacement)
-{
-    while(s.find(subs) != s.npos) {
-        s = s.replace(s.find(subs), subs.size(), replacement);
-    }
-
-    return s;
-}
-
 void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::string replacement)
 {
     std::regex e(regexSub);
@@ -338,6 +343,12 @@ std::string ncclCheck(std::string s)
 {
     return "NCCLCHECK(" + s + ");";
 }
+
+std::string cublasCheck(std::string s)
+{
+    return "CUBLASCHECK(" + s + ");";
+}
+
 std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg, bool x=false)
 {
     const std::string cudaMalloc = "cudaMalloc";
@@ -463,14 +474,16 @@ std::string iteratorForDim(size_t dim)
 }
 
 
-std::string iteratorAccessString(size_t ndims)
+std::string iteratorAccessString(std::shared_ptr<ExpressionImpl> node)
 {
     std::string s = "";
-
-    for (size_t i = 0; i < ndims; i++) {
-        s += iteratorForDim(i);
-        if (i != ndims - 1)
-            s += "][";
+    
+    for (size_t i = 0; i < node->dims(); i++) {
+        auto iterAccess = iteratorForDim(i);
+        auto numElem = (i != node->dims() - 1) ? "*"+genNumElem(node, i+1, node->dims()): "";
+        s += iterAccess + numElem;
+        if (i != node->dims() - 1)
+            s += "+";
     }
 
     return s;
@@ -529,7 +542,6 @@ class PointwiseOpCodegen : public AstVisitor
 {
     private:
         std::stringstream& os_;
-        std::vector<std::string> iterators_;
         PipelineStage* pipeStage_;
         Pipeline& pipeline_;
         bool generateCheck_;
@@ -540,18 +552,17 @@ class PointwiseOpCodegen : public AstVisitor
         CodeType codeType_;
 
     public:
-        PointwiseOpCodegen(std::stringstream& os, std::vector<std::string> iterators,
-                                 PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
-                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), explicitType_(None), os_(os), iterators_(iterators), 
+        PointwiseOpCodegen(std::stringstream& os, PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
+                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), explicitType_(None), os_(os),
                                  pipeStage_(pipeStage), pipeline_(pipeline), generateCheck_(generateCheck), codeType_(codeType),
                                  generateAsVars_(generateAsVars), mixedPrecisionCasts_(mixedPrecisionCasts) {}
-        PointwiseOpCodegen(std::stringstream& os, std::vector<std::string> iterators, Pipeline& pipeline, bool generateCheck,
+        PointwiseOpCodegen(std::stringstream& os, Pipeline& pipeline, bool generateCheck,
                                  CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
-            os_(os), iterators_(iterators), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
+            os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
             useHalf2(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
         PointwiseOpCodegen(std::stringstream& os, std::string iterator, Pipeline& pipeline, bool generateCheck, 
                                  CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
-            os_(os), iterators_({iterator}), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
+            os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
             useHalf2(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
 
         void print(ExpressionImpl& node) {
@@ -570,7 +581,7 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << ((generateCheck_ ? "__" : "") + node.name());
             if (!generateAsVars_) {
                 os_ << "[";
-                os_ << iteratorAccessString(node.dims());
+                os_ << iteratorForDim(0);
                 os_ << "]";
             }
         }
@@ -596,14 +607,14 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << "(";
             if (codeType_ == CodeType::CUDA && (explicitType_ == TensorElemType::Float16)) {
                 std::stringstream os0;
-                PointwiseOpCodegen codegen0(os0, iterators_, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
+                PointwiseOpCodegen codegen0(os0, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
                 codegen0.setExplicitType(explicitType_);
                 if (useHalf2)
                     codegen0.setHalf2Type();
                 node.operand(0)->accept(codegen0);
 
                 std::stringstream os1;
-                PointwiseOpCodegen codegen1(os1, iterators_, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
+                PointwiseOpCodegen codegen1(os1, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
                 codegen1.setExplicitType(explicitType_);
                 if (useHalf2)
                     codegen1.setHalf2Type();
@@ -689,7 +700,7 @@ class PointwiseOpCodegen : public AstVisitor
                 if (storageLoc != shptr && shptr->layout() == Sliced && storageLoc->layout() != Sliced) {
                     os_ << genNumElem(shptr) << " * " << rankVar << " + ";
                 }
-                os_ << iteratorAccessString(node.dims());
+                os_ << iteratorForDim(0);
                 os_ << "]";
             }
         }
@@ -856,6 +867,7 @@ struct CFunc {
     std::string body;
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
     bool isCUDA;
+    AstNodeType type;
 };
 
 struct CStruct {
@@ -938,7 +950,7 @@ std::string generateReduceTensorCodeCPU(Pipeline& pipeline, std::shared_ptr<Stag
     
     //If we are checking the output, i.e., generateCheck is true, then
     //we prefix each stage name with "__"    
-    std::string accessStr = "[" + iteratorAccessString(output->dims()) + "]" ;
+    std::string accessStr = "[" + iteratorAccessString(output) + "]" ;
     //Print assignment to output stage
     codeStream << indent(indentLevel) << ("__" + output->name() + "[0]")
                << " = " << ("__" + output->name() + "[0]");
@@ -954,7 +966,7 @@ std::string generateReduceTensorCodeCPU(Pipeline& pipeline, std::shared_ptr<Stag
     codeStream << "__" << reduceTensor->arg()->name() <<accessStr << ";" << std::endl;
 
     if (generateCheck) {
-        iteratorAccessString(output->dims());
+        iteratorAccessString(output);
         std::string u = ("__" + output->name()) + accessStr;
         std::string v = "h" + output->name() + accessStr;
         codeStream << indent(indentLevel) << "if (!eqFloat(" << u << ", " << v << ")) {" << std::endl;
@@ -1013,17 +1025,16 @@ std::string generateOpCodeCPU(Pipeline& pipeline, std::shared_ptr<StageImpl> out
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
-                                          pipeline, true, CodeType::MPI, isMixedPrecision(binOpNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, true, CodeType::MPI, isMixedPrecision(binOpNode));
     binOpCodegen.print(*binOpNode);
     
-    std::string accessStr = "[" + iteratorAccessString(output->dims()) + "]" ;
+    std::string accessStr = "[" + iteratorAccessString(output) + "]" ;
     //Print assignment to output stage
     codeStream << indent(indentLevel) << ("__" + output->name()) << accessStr
                << " = " << binopCodeStream.str() << ";" << std::endl;
 
     if (generateCheck) {
-        iteratorAccessString(output->dims());
+        iteratorAccessString(output);
         std::string u = ("__" + output->name()) + accessStr;
         std::string v = "h" + output->name() + accessStr;
         codeStream << indent(indentLevel) << "if (!eqFloat(" << u << ", " << v << ")) {" << std::endl;
@@ -1093,7 +1104,7 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
     //TODO: Improve this by using NVIDIA CUB, maybe?
     switch (reduceTensor->op()) {
         case Summation:
-            codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output->dims()) << "]);" << std::endl;
+            codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "]);" << std::endl;
             break;
         case Maximum:
         case Multiplication:
@@ -1104,9 +1115,88 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
 
     codeStream << "}";
 
-    return CFunc({funcName, codeStream.str(), redOpInputs, true});
+    return CFunc({funcName, codeStream.str(), redOpInputs, true, ReduceTensorNode});
 }
 
+CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<MatMulImpl> matmul)
+{
+    std::stringstream codeStream;
+    static int nameCounter = 0;
+    std::string funcName = "matMul" + std::to_string(nameCounter++);
+
+    codeStream << "void " << funcName << "(";
+
+    //Print arguments of CUDA Kernel
+    //Add output to arguments too.
+    std::set<std::shared_ptr<ExpressionImpl>> inputs;
+    inputs.insert(matmul->operand(0));
+    inputs.insert(matmul->operand(1));
+    
+    for (auto it : pipeline.explicitStoreLocations()) {
+        inputs.erase(it.first);
+        inputs.insert(it.second);
+    }
+    
+    auto dimExprs = allDimExprs(inputs.begin(), inputs.end());
+    inputs.insert(dimExprs.begin(), dimExprs.end());
+
+    int ii = 0;
+    for (auto iter : inputs) {
+        codeStream << elemTypeToCType(iter->elemType()) << " ";
+        if (iter->type() == TensorNode || iter->type() == StageNode)
+            codeStream << "* ";
+        codeStream << iter->name();
+        codeStream << ", ";
+    }
+    
+    codeStream << cublasHandleTy << " " << cublasHandleVar << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+    codeStream << ") {" << std::endl;
+
+    //Function body
+    //Iterator initialization from threadIdx and blockIdx
+    
+    std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
+    std::string input1Name, input2Name;
+
+    if (matmul->operand(0)->type() == TensorNode) {
+        input1Name = matmul->operand(0)->name();
+    } else {
+        std::shared_ptr<StageImpl> inputStage = AstNodeImpl::asStageImpl(matmul->operand(0));
+        input1Name = pipeline.explicitStoreLocations().count(inputStage) == 0 ? matmul->operand(0)->name() : pipeline.explicitStoreLocations().at(inputStage)->name();
+    }
+
+    if (matmul->operand(1)->type() == TensorNode) {
+        input2Name = matmul->operand(1)->name();
+    } else {
+        std::shared_ptr<StageImpl> inputStage = AstNodeImpl::asStageImpl(matmul->operand(1));
+        input2Name = pipeline.explicitStoreLocations().count(inputStage) == 0 ? matmul->operand(1)->name() : pipeline.explicitStoreLocations().at(inputStage)->name();
+    }
+
+    std::string cublasTypeA = elemTypeToCUBLASType(matmul->operand(0)->elemType());
+    std::string cublasTypeB = elemTypeToCUBLASType(matmul->operand(1)->elemType());
+    std::string cublasTypeC = elemTypeToCUBLASType(output->elemType());
+
+    //Declare alpha and beta
+    codeStream << indent(1) << "float alpha = 1.0f;" << std::endl
+               << indent(1) << "float beta = 0.0f;" << std::endl;
+    
+    std::string M = genNumElem(output, 0, output->dimSizes().size() - 1);
+    std::string N = genNumElem(output, output->dimSizes().size() - 1, output->dimSizes().size());
+    std::string K = genNumElem(matmul->operand(0), matmul->operand(0)->dimSizes().size() - 1, matmul->operand(0)->dimSizes().size());
+    std::stringstream cublasCall;
+    //Always perform row major
+    cublasCall << "cublasGemmEx(" << cublasHandleVar << ", CUBLAS_OP_N, CUBLAS_OP_N" << ", " << std::endl
+               << indent(2) << N << ", " <<  M << ", " << K << ", " << std::endl
+               << indent(2) << "&alpha, "
+               << indent(2) << input2Name << ", " << cublasTypeA << ", " << N << ", " << std::endl
+               << indent(2) << input1Name << ", " << cublasTypeB << ", " << K << ", " << std::endl
+               << indent(2) << "&beta, " << name << ", " << cublasTypeC << ", " << N << ", " << std::endl
+               << indent(2) << "CUDA_R_16F, CUBLAS_GEMM_DFALT_TENSOR_OP)";
+    //TODO: Supports only 16 bit for now
+    codeStream << indent(1) << cublasCheck(cublasCall.str()) << std::endl;
+    codeStream << "}";
+    return CFunc({funcName, codeStream.str(), inputs, true, MatMulNode});
+}
 
 CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<NormImpl> reduceTensor)
 {
@@ -1158,10 +1248,10 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
 
     codeStream << indent(1);
     //TODO: Improve this by using NVIDIA CUB, maybe?
-    codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output->dims()) << "] * " << inputName << "[" << iteratorAccessString(output->dims()) << "]" << ");" << std::endl;
+    codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "] * " << inputName << "[" << iteratorAccessString(output) << "]" << ");" << std::endl;
     codeStream << "}";
 
-    return CFunc({funcName, codeStream.str(), redOpInputs, true});
+    return CFunc({funcName, codeStream.str(), redOpInputs, true, NormNode});
 }
 
 CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
@@ -1201,24 +1291,26 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> outpu
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
-    std::string varIterator = iteratorInit(binOpNode->dims(), indent(1));
+
+    //All code generated for binary operations will be single dimension.
+    std::string varIterator = iteratorInit(1, indent(1));
 
     codeStream << varIterator << std::endl;
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), pipeline, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, false, CodeType::CUDA, isMixedPrecision(binOpNode));
     binOpCodegen.print(*binOpNode);
     
     //Print assignment to output stage
     std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
     codeStream << indent(1) << name;
-    codeStream << "[" << iteratorAccessString(output->dims()) << "]" 
+    codeStream << "[" << iteratorForDim(0) << "]" 
                << " = " << binopCodeStream.str() << ";" << std::endl;
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true});
+    return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, BinaryPointwiseOpNode});
 }
 
 CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
@@ -1272,8 +1364,8 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     //Function body
     //Iterator initialization from threadIdx and blockIdx
 
-    //TODO: We assume that all binaryopnodes have same dimensions
-    codeStream << iteratorInit(outStages[0]->dims(), indent(1)) << std::endl;
+    //Generate single dimension code for binary pointwise 
+    codeStream << iteratorInit(0, indent(1)) << std::endl;
     
     //Print All Binary Operations
     for (size_t it = 0; it < outStages.size(); it++) {
@@ -1288,7 +1380,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
             }
         } else {    
             std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
-            PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(binOpNode->dims()), 
+            PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                         pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
             binOpCodegen.print(*binOpNode);
             //Print assignment to output stage
@@ -1300,7 +1392,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                             pipeline.explicitStoreLocations().at(output)->name();
             codeStream << indent(1) << name;
             if (pipeStage->getStorageLocation(output) == Memory) {
-                codeStream << "[" << iteratorAccessString(output->dims()) << "]" ;
+                codeStream << "[" << iteratorForDim(0) << "]" ;
             }
             
             codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
@@ -1309,7 +1401,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), arguments, true});
+    return CFunc({binOpFuncName, codeStream.str(), arguments, true, BinaryPointwiseOpNode});
 }
 
 std::string generateStageCompUsingMULTI(Pipeline& pipeline, std::shared_ptr<StageImpl> stage, std::shared_ptr<StageImpl> commCollStage, std::string funcName,
@@ -1405,7 +1497,7 @@ std::string funcBodyForFusedBinOpCommCollCodeForNCCL(Pipeline& pipeline, Pipelin
     //If there is a cast operation from a smaller bitwidth Stage 
     //to a larger bitwidth Stage then we consider that as a mixed precision.
     
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, iteratorsForDims(output->definition()->dims()), 
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                           pipeStage, pipeline, false, true, CodeType::CUDA, 
                                           mixedPrecisionCasts);
     if (type == "half" || type == "half2") {
@@ -1725,6 +1817,9 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     else if (pipeline.name() == "lamb") {
         v = "1";
         ncclFuncCallStr = "NCCLCHECK(AllReduce_pipe(lr, beta1, beta2, (half*)g, w, (half*)w, m, v, w, N, ncclHalf, comm, ncclSum, stream));";
+    } else {
+        v = "0";
+        ncclFuncCallStr = "NCCLCHECK(AllReduce_pipe(lr, beta1, beta2, (half*)g, w, (half*)w, m, v, N, ncclHalf, comm, ncclSum, stream));";
     }
 
     std::cout << "v " << v << " " << pipeline.name() << std::endl;
@@ -3741,7 +3836,7 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
 
 std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, std::string streamArg, int indentLevel) 
 {
-    ASSERT(outStage->dims() == 1, "Only 1 dimension tensors supported");
+    // ASSERT(outStage->dims() == 1, "Only 1 dimension tensors supported");
     ASSERT(cfunc.isCUDA, "Function is not a CUDA kernel");
     std::stringstream totalThreads;
     static int kernelCall = 0;
@@ -3750,28 +3845,33 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
 
     if (stageDef->type() == UpdateNode)
         stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
-
-    if (stageDef->type() == BinaryPointwiseOpNode) {
-        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
-    } else if (stageDef->type() == ReduceTensorNode) {
-        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asReduceTensorImpl(stageDef)->arg()) << ";";
-    } else if (stageDef->type() == NormNode) {
-        totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asNormImpl(stageDef)->arg()) << ";";
-    } else {
-        ASSERT(false, "Not implemented for node type\n");
-    }
-
-    std::string numThreadsVar = "numThreads_"+ std::to_string(kernelCall);
-    std::string numThreadBlocksVar = "numThreadBlocks_"+std::to_string(kernelCall);
-    std::stringstream numThreads;
-    std::stringstream numThreadBlocks;
-    numThreads << "size_t " << numThreadsVar << " = (size_t)min(" << totalThreadsVar << ", 256UL);";
-    numThreadBlocks << "size_t " << numThreadBlocksVar << " = DIVUP(" << totalThreadsVar << ", " << numThreadsVar << ");";
-
+    
     std::stringstream call;
-    call << indent(indentLevel) << totalThreads.str() << std::endl << indent(indentLevel) << numThreads.str() << std::endl << indent(indentLevel) << numThreadBlocks.str() << std::endl;
+    if (stageDef->type() == MatMulNode) {
+        call << indent(indentLevel) << cfunc.name << "(";
+    } else {
+        if (stageDef->type() == BinaryPointwiseOpNode) {
+            totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
+        } else if (stageDef->type() == ReduceTensorNode) {
+            totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asReduceTensorImpl(stageDef)->arg()) << ";";
+        } else if (stageDef->type() == NormNode) {
+            totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asNormImpl(stageDef)->arg()) << ";";
+        } else {
+            ASSERT(false, "Not implemented for node type\n");
+        }
+
+        std::string numThreadsVar = "numThreads_"+ std::to_string(kernelCall);
+        std::string numThreadBlocksVar = "numThreadBlocks_"+std::to_string(kernelCall);
+        std::stringstream numThreads;
+        std::stringstream numThreadBlocks;
+        numThreads << "size_t " << numThreadsVar << " = (size_t)min(" << totalThreadsVar << ", 256UL);";
+        numThreadBlocks << "size_t " << numThreadBlocksVar << " = DIVUP(" << totalThreadsVar << ", " << numThreadsVar << ");";
+
+        call << indent(indentLevel) << totalThreads.str() << std::endl << indent(indentLevel) << numThreads.str() << std::endl << indent(indentLevel) << numThreadBlocks.str() << std::endl;
+        call << indent(indentLevel) << cfunc.name << "<<<" << numThreadBlocksVar << ", " << numThreadsVar << ", "<< 0 << ", " << streamArg <<">>>(";
+    }
+    
     int ii = 0;
-    call << indent(indentLevel) << cfunc.name << "<<<" << numThreadBlocksVar << ", " << numThreadsVar << ", "<< 0 << ", " << streamArg <<">>>(";
     for (auto iter : cfunc.arguments) {
         call << iter->name();
         if (ii != cfunc.arguments.size() - 1)
@@ -3779,6 +3879,8 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
         ii++;
     }
 
+    if (stageDef->type() == MatMulNode)
+        call << ", " << cublasHandleVar;
     call << ", " << commSizeArg << ", " << rankVar << ")";
     kernelCall++;
     return call.str();
@@ -3788,6 +3890,20 @@ struct IntermediateStage {
     std::shared_ptr<StageImpl> stageImpl;
     bool requiresAlloc;
 };
+
+bool isStageAnIntermediate(std::vector<IntermediateStage>& intermStages, std::shared_ptr<ExpressionImpl> stage)
+{
+    if (stage->type() != StageNode)
+        return false;
+
+    for (auto interm : intermStages) {
+        if (interm.stageImpl == AstNodeImpl::asStageImpl(stage)) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 void printIntermdiatesCUDAAlloc(std::vector<IntermediateStage>& intermediates, std::string& declCode, 
                                 std::string& allocCode, std::string& freeCode, int indentLevel)
@@ -3809,7 +3925,7 @@ void printIntermdiatesCUDAAlloc(std::vector<IntermediateStage>& intermediates, s
     freeCode = freeCodeStream.str();
 }
 
-void ACCCDSLImpl::NCCLCodegen::codegen()
+void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
 {
     /*Generate the reference function*/
     /*Print Function declaration*/
@@ -3837,6 +3953,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
              << indent(1) << printEventCreate(stopEvent) << std::endl << std::endl;
     
     bool hasACommCollStage = false;
+    bool useCUBLAS = false;
 
     //Generate code in a topological sort manner
     for (auto pipelineStage : pipeline_.topoOrder()) {
@@ -3870,6 +3987,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
         * */
         if (pipelineStage->stages().size() == 1) {
             //If there is only one stage
+            bool inPlace = false;
+
             for (auto outStage : pipelineStage->stages()) {
                 std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();                
                 if (stageDef->type() == UpdateNode)
@@ -3883,6 +4002,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                             genNumElem(allReduceColl->arg()) << ", " << elemTypeToNCCLType(allReduceColl->arg()->elemType()) << "," << 
                             redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllReduce";
+                        inPlace = true;
                         break;
                     }
                     case AllGatherNode: {
@@ -3949,6 +4069,14 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                         pipelineStageName = cfunc.name;
                         break;
                     }
+                    case MatMulNode: {
+                        CFunc cfunc = generateCUBLASMatMul(pipeline_, outStage, AstNodeImpl::asMatMulImpl(stageDef));
+                        subFunctions.push_back(cfunc);
+                        funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                        pipelineStageName = cfunc.name;
+                        useCUBLAS = true;
+                        break;
+                    }
                     default:
                         ASSERT(false, "Case for type '" << AstNodeTypeToStr(stageDef->type()) << "' not defined.");
                 }
@@ -3963,35 +4091,69 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 }
             }
         } else {
-            for (auto outStage : pipelineStage->stages()) {
-                std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
-                if (stageDef->isCommCollective()) {
-                    hasACommCollStage = true;
-                    break;
-                }
-            }
+            //Traverse the internal pipeline stage DAG to generate overlapped and/or fused stages
+            if (pipeline_.name() == "model_parallel") {
+                std::shared_ptr<StageImpl> matmulStage = nullptr;
+                std::shared_ptr<StageImpl> rsStage = nullptr;
+                std::shared_ptr<StageImpl> agStage = nullptr;
+                pipelineStageName = "overlap";
 
-            if (hasACommCollStage) {
-                funcBody << indent(1) << generateFusedNCCLCommColl(pipeline_, pipelineStage) << std::endl;
-                pipelineStageName = "FusedAllReduce";
-            } else {
-                CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
+                generateFusedNCCLCommColl(pipeline_, pipelineStage);
+
+                for (auto outStage : pipelineStage->stages()) {
+                    std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
+                    if (stageDef->type() == MatMulNode) {
+                        matmulStage = outStage;
+                    } else if (stageDef->type() == ReduceScatterNode) {
+                        rsStage = outStage;
+                    } else if (stageDef->type() == AllGatherNode) {
+                        agStage = outStage;
+                    }
+                }
+                
+                ASSERT(matmulStage != nullptr, "");
+                CFunc cfunc = generateCUBLASMatMul(pipeline_, matmulStage, AstNodeImpl::asMatMulImpl(matmulStage->definition()));
                 subFunctions.push_back(cfunc);
-                std::shared_ptr<StageImpl> sliceStage = nullptr;
-                for (auto stage : pipelineStage->stages()) {
-                    if (stage->layout() == Sliced) {
-                        sliceStage = stage;
+                useCUBLAS = true;
+                intermediateStages.push_back({matmulStage, true});
+                
+                funcBody << genCUDAFuncCall(matmulStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                std::shared_ptr<ReduceScatterImpl> rsStageDef = AstNodeImpl::asReduceScatterImpl(rsStage->definition());
+                std::shared_ptr<AllGatherImpl> agStageDef = AstNodeImpl::asAllGatherImpl(agStage->definition());
+                funcBody << indent(1) << "ncclAllReduce(" << rsStageDef->arg()->name() << ", " << agStage->name() << ", " << 
+                            genNumElem(agStageDef) << ", " << elemTypeToNCCLType(rsStageDef->arg()->elemType()) << "," << 
+                            redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
+            } else {
+                for (auto outStage : pipelineStage->stages()) {
+                    std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
+                    if (stageDef->isCommCollective()) {
+                        hasACommCollStage = true;
+                        break;
                     }
                 }
-                if (sliceStage == nullptr) sliceStage = pipelineStage->stages()[0];
-                funcBody << genCUDAFuncCall(sliceStage, cfunc, streamArg, 1)<<";"<<std::endl;
-                for (auto liveout : pipelineStage->liveoutStages(pipeline_.outputs())) {
-                    //Add liveouts that are not output as intermediate
-                    if (pipeline_.outputs().count(liveout) == 0) {
-                        intermediateStages.push_back({liveout, true});
+
+                if (hasACommCollStage) {
+                    funcBody << indent(1) << generateFusedNCCLCommColl(pipeline_, pipelineStage) << std::endl;
+                    pipelineStageName = "FusedAllReduce";
+                } else {
+                    CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
+                    subFunctions.push_back(cfunc);
+                    std::shared_ptr<StageImpl> sliceStage = nullptr;
+                    for (auto stage : pipelineStage->stages()) {
+                        if (stage->layout() == Sliced) {
+                            sliceStage = stage;
+                        }
                     }
+                    if (sliceStage == nullptr) sliceStage = pipelineStage->stages()[0];
+                    funcBody << genCUDAFuncCall(sliceStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                    for (auto liveout : pipelineStage->liveoutStages(pipeline_.outputs())) {
+                        //Add liveouts that are not output as intermediate
+                        if (pipeline_.outputs().count(liveout) == 0) {
+                            intermediateStages.push_back({liveout, true});
+                        }
+                    }
+                    pipelineStageName = cfunc.name;
                 }
-                pipelineStageName = cfunc.name;
             }
         }
 
@@ -4015,10 +4177,15 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
     //Remove all storeAt's target and add source
 
     for (auto it : pipeline_.explicitStoreLocations()) {
-        outputArgs.erase(it.first);
-        outputArgs.insert(it.second);
-        pipeArgs.erase(it.first);
-        pipeArgs.insert(it.second);
+        if (pipeline_.outputs().count(it.first) > 0) {
+            outputArgs.erase(it.first);
+            outputArgs.insert(it.second);
+        }
+        
+        if (!isStageAnIntermediate(intermediateStages, it.second)) {
+            pipeArgs.erase(it.first);
+            pipeArgs.insert(it.second);
+        }
     }
 
     auto pipeDimExprs = allDimExprs(pipeArgs.begin(), pipeArgs.end());
@@ -4027,7 +4194,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
     for (auto iter : pipeline_.arguments()) {
         pipeArgs.insert(iter);
     }
-
+    
     /*Print sub functions (CUDA kernels)*/
     for (auto& cfunc : subFunctions) {
         os_ << cfunc.body << std::endl << std::endl;
@@ -4050,6 +4217,10 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
     }
     //NCCLComm and CUDA Stream arguments
     os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+
+    if (useCUBLAS)
+        os_ << ", " << cublasHandleTy << " " << cublasHandleVar;
+
     os_ << ")";
     /*Function body*/
     os_ << "{";
@@ -4266,14 +4437,47 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n"
                 "  ncclCommInitRank(&comm, comm_size, id, rank);\n";
             const std::string streamDecl = "  " + streamTy + " " + streamArg + ";\n" + "  cudaStreamCreate(&"+streamArg+");\n";
-            
-            mainFunc << mpiStartCode << "  " << epochDecl << streamDecl << "  " << mpibarrier << std::endl;
+            const std::string cublasHandleDecl = indent(1) + cublasHandleTy + " "  + cublasHandleVar + ";\n" +
+                                                 indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+")") + "\n" +
+                                                 indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") + "\n" +
+                                                 indent(1) + cublasCheck("cublasSetMathMode(" + cublasHandleVar + ", CUBLAS_TENSOR_OP_MATH)");
+
+            mainFunc << mpiStartCode << "  " << epochDecl << streamDecl;
+            if (useCUBLAS)
+                mainFunc << cublasHandleDecl << std::endl;
+            mainFunc << indent(1) << mpibarrier << std::endl;
             int indentLevel = 1;
             
             //For loop for different values of sizes to evaluate
-            mainFunc << indent(indentLevel) << "for (int __i = 10; __i < 30; __i++) {" << std::endl;
-            indentLevel++;
-            mainFunc << indent(indentLevel) << "size_t N = 1 << __i;" << std::endl;
+            if (varBounds.size() == 0) {
+                mainFunc << indent(indentLevel) << "for (int __i = 10; __i < 30; __i++) {" << std::endl;
+                indentLevel++;
+                mainFunc << indent(indentLevel) << "size_t N = 1 << __i;" << std::endl;
+            } else {
+                for (auto varBound : varBounds) {
+                    if (varBound.type_ == Values) {
+                        if (varBound.values_.size() == 1)
+                            mainFunc << indent(indentLevel) << "size_t " << varBound.var_.impl()->name() << " = " << varBound.values_[0] << ";" << std::endl;
+                        else {
+                            std::string varName = varBound.var_.impl()->name();
+                            std::string arrayVar = "array_"+varName;
+                            mainFunc << indent(indentLevel) << "int " << arrayVar << "[] = {";
+                            for (int i = 0; i < varBound.values_.size(); i++) {
+                                mainFunc << varBound.values_[i];
+                                if (i != varBound.values_.size() - 1)
+                                    mainFunc << ", ";
+                            }
+                            mainFunc << "};" << std::endl;
+                            std::string iteratorVar = "iter_"+varName;
+                            mainFunc << indent(indentLevel) << "for (int " << iteratorVar << " = 0" << "; " << 
+                                        iteratorVar << "< " << "sizeof(" << arrayVar << ")/sizeof(" << arrayVar<<"[0]" << ");" << 
+                                        iteratorVar << "++) {" << std::endl;
+                            indentLevel++;
+                            mainFunc << indent(indentLevel) << "int " << varName << " = " << arrayVar << "[" << iteratorVar << "];" << std::endl;
+                        }
+                    }
+                }
+            }
             mainFunc << indent(indentLevel) << "// Inputs" << std::endl;
             //Add declarations for tensors and allocate memory.
             for (auto iter = pipeline_.arguments().begin(); 
@@ -4330,6 +4534,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
                 mainFunc << iter.second.second << ", ";
             }
             mainFunc << commArg << ", " << streamArg << ", " << commSizeArg << ", " << rankVar;
+            if (useCUBLAS)
+                mainFunc << ", " << cublasHandleVar;
             mainFunc << "); "<< std::endl;
             
             //Add mpiref function call
@@ -4349,14 +4555,30 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
             }
             mainFunc << intermFreeCode;
             std::stringstream printfTimeString;
-            printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{SZ: %ld, Epochs: %d, ";
+            if (varBounds.size() == 0)
+                printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{SZ: %ld, Epochs: %d, ";
+            else {
+                std::string varBoundsPrintfFmt = "";
+                for (auto varBound : varBounds) {
+                    varBoundsPrintfFmt += varBound.var_.impl()->name() + ": %ld, ";
+                }
+                printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{" << varBoundsPrintfFmt << "Epochs: %d, ";
+            }
 
             for (auto iter : psToNameAndTimeVar) {
                 printfTimeString << iter.second.first << ": %f, ";
             }
             
             printfTimeString << "Total: %f}\\n\", ";
-            printfTimeString << "N, " << "epochs, ";
+
+            if (varBounds.size() == 0)
+                printfTimeString << "N, " << "epochs, ";
+            else {
+                std::string vars = "";
+                for (auto varBound : varBounds)
+                    vars += varBound.var_.impl()->name() + ", ";
+                printfTimeString << vars << "epochs, ";
+            }
 
             for (auto iter : psToNameAndTimeVar) {
                 printfTimeString << iter.second.second << ", ";
@@ -4368,9 +4590,20 @@ void ACCCDSLImpl::NCCLCodegen::codegen()
             }
             printfTimeString << ");" << std::endl;
             mainFunc << indent(indentLevel) << printfTimeString.str();
-            //End size for loop
-            indentLevel--;
-            mainFunc << indent(indentLevel) << "}" << std::endl;
+            //End variables for loop
+             if (varBounds.size() == 0) {
+                indentLevel--;
+                mainFunc << indent(indentLevel) << "}" << std::endl;
+            } else {
+                for (auto varBound : varBounds) {
+                    if (varBound.type_ == Values) {
+                        if (varBound.values_.size() > 1) {
+                            indentLevel--;
+                            mainFunc << indent(indentLevel) << "}" << std::endl;
+                        }
+                    }
+                }
+            }
             //End main function block
             mainFunc << indent(indentLevel) << "MPI_Finalize();" << std::endl
                      << "}" << std::endl;

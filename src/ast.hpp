@@ -48,6 +48,7 @@ namespace ACCCDSL
 enum TensorLayout {
     Replicated,
     Sliced,
+    Sliced_2,
     Local
 };
 
@@ -947,30 +948,19 @@ public:
         ASSERT(operand(0)->elemType() == operand(1)->elemType(), "Element types of operands are different.");
         elemType_ = operand(0)->elemType();
         ASSERT(operand(0)->dims() >= 2, "Operand(0) has dimensions '" << operand(0)->dims() << "' < 2");
-        ASSERT(operand(1)->dims() >= 2, "Operand(0) has dimensions '" << operand(1)->dims() << "' < 2");
-        //FIX
-        ASSERT(false, "FIX");
-        #if 0
+        ASSERT(operand(1)->dims() == 2, "Operand(0) has dimensions '" << operand(1)->dims() << "' != 2");
+       
         std::shared_ptr<ExpressionImpl> M1 = nullptr;
         for (int i = 0; i < operand(0)->dims() - 1; i++) {
             auto d = operand(0)->dimSizes()[i];
             dimSizes_.push_back(d);
-            if (i == 0) {
-                M1 = d;
-            } else {
-                // M1 = M1 * d;
-            }
         }
+        dimSizes_.push_back(operand(1)->dimSizes()[operand(1)->dims() - 1]);
+
         auto N1 = operand(0)->dimSizes()[operand(0)->dims() - 1];
-
-        auto M2 = 1;
-        for (int i = 0; i < operand(1)->dims() - 1; i++) {
-            // M2 = M2 * operand(1)->dimSizes()[i];
-        }
-
-        auto N2 = operand(1)->dimSizes()[operand(1)->dims() - 1];
-        dimSizes_.push_back(N2);
-        //ASSERT((N1 == M2), "Dimensions of operands ["<<M1<<","<<N1<<"] and ["<<M2<<","<<N2<<"] do not match");
+        auto M2 = operand(1)->dimSizes()[0];
+        
+        ASSERT((N1 == M2), "Last dimension of first operand != first dimension of second operaton " << "'" << N1->name() << "!= " << M2->name() << "'");
 
         //If any of the operands are Local then the layout is Local.
         if (operand(0)->layout() == Local || operand(1)->layout() == Local)
@@ -978,10 +968,20 @@ public:
         //If both operands are Replicated then layout is replicated
         else if (operand(0)->layout() == Replicated && operand(1)->layout() == Replicated)
             layout_ = Replicated;
-        //Otherwise always Local
-        else
-            layout_ = Local;
-        #endif 
+        else {
+            //If op(0) is sliced in first dimension and other is replicated then layout is Sliced in first dimension
+            if (operand(0)->layout() == Sliced && operand(1)->layout() == Replicated)
+                layout_ = Sliced;
+            //If op(1) is sliced in second dimension and op(0) is replicated then layout is Sliced in second dimension
+            else if (operand(0)->layout() == Replicated && operand(1)->layout() == Sliced_2)
+                layout_ = Sliced_2;
+            //if both are sliced then layout is local
+            else if ((operand(0)->layout() == Sliced || operand(0)->layout() == Sliced_2) && (operand(1)->layout() == Sliced || operand(1)->layout() == Sliced_2))
+                layout_ = Local;
+            else
+                ASSERT(false, "Not implemented");
+        }
+            
     }
 };
 
