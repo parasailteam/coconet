@@ -1817,6 +1817,9 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     else if (pipeline.name() == "lamb") {
         v = "1";
         ncclFuncCallStr = "NCCLCHECK(AllReduce_pipe(lr, beta1, beta2, (half*)g, w, (half*)w, m, v, w, N, ncclHalf, comm, ncclSum, stream));";
+    } else {
+        v = "0";
+        ncclFuncCallStr = "NCCLCHECK(AllReduce_pipe(lr, beta1, beta2, (half*)g, w, (half*)w, m, v, N, ncclHalf, comm, ncclSum, stream));";
     }
 
     std::cout << "v " << v << " " << pipeline.name() << std::endl;
@@ -4094,6 +4097,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 std::shared_ptr<StageImpl> rsStage = nullptr;
                 std::shared_ptr<StageImpl> agStage = nullptr;
                 pipelineStageName = "overlap";
+
+                generateFusedNCCLCommColl(pipeline_, pipelineStage);
 
                 for (auto outStage : pipelineStage->stages()) {
                     std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
