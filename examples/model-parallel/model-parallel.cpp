@@ -21,7 +21,7 @@ void MM_AR_C()
     
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
 
-    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {3072}), CodeGenVarBounds(H, {3072})};
+    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("model-parallel-mm-ar-c.cu", varBounds);
 }
 
@@ -43,7 +43,7 @@ void MM_RS_C_AG()
 
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
     
-    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {3072}), CodeGenVarBounds(H, {3072})};
+    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("model-parallel-mm-rs-c-ag.cu", varBounds);
 }
 
@@ -68,7 +68,7 @@ void ol_MM_fuse_RS_C_AG()
     pipeline.fuse({sumRS, scOut, out});
     pipeline.overlap({layer, sumRS, scOut, out});
 
-    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {3072}), CodeGenVarBounds(H, {3072})};
+    std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("model-parallel-ol-mm-fuse-rs-c-ag.cu", varBounds);
 }
 
