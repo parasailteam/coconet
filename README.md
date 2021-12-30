@@ -167,3 +167,22 @@ python gen-model-parallel-graphs.py results/
 ```
 
 Graphs with `Figure11.pdf` is stored in `experiments` directory.
+
+<b>Pipeline Parallel Experiments</b>
+To run experiments invoke `experiments/pipeline-parallel-exp.py`. The script requires an argument: a directory to store results. 
+For example, to run experiments with 4 processes, with MASTER_ADDR to 127.0.0.1, MASTER_PORT to 10000, and store results to `experiments/results`.
+
+```
+cd experiments
+export NPROC=4
+export MPI_ARGS="-x MASTER_ADDR=127.0.0.1 -x MASTER_PORT=10000"
+python pipeline-parallel-exp.py results/
+```
+
+Generate graphs in PDF format by running `experiments/gen-pipeline-parallel-graphs.py` and provide the results directory.
+
+```
+python gen-pipeline-parallel-graphs.py results/
+```
+
+Graphs with `Figure12.pdf` is stored in `experiments` directory.
