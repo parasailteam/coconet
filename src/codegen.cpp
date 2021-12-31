@@ -335,6 +335,17 @@ void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::
     writeFile(filepath, contents);
 }
 
+std::string printCudaOccupancyMaxActiveBlocksPerMultiprocessor(std::string blockspersm, std::string funcname, std::string threads, int shmem)
+{
+    return "cudaOccupancyMaxActiveBlocksPerMultiprocessor(&" + blockspersm + ", (void*)" + funcname + ", " + threads + ", " + std::to_string(shmem) + ")";
+}
+
+std::string printCudaLaunchCooperativeKernel(std::string funcname, std::string blocks, std::string threads, std::string args, int shmem, std::string stream)
+{
+  return "cudaLaunchCooperativeKernel((void*)"+funcname+", "+ blocks +", " + threads + ", " + args + ", " + std::to_string(shmem) + ", " + stream +")";
+}
+
+
 std::string cudaCheck(std::string s)
 {
     return "CUDACHECK(" + s + ");";
@@ -1471,7 +1482,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
         codeStream << indent(indentLevel) << "if (" << threadIdxInGrid << " == 0) {" << std::endl;
         codeStream << normInits.str();
         codeStream << indent(indentLevel) << "}" << std::endl;
-        codeStream << indent(indentLevel) << "this_grid().synchronize();" << std::endl;
+        codeStream << indent(indentLevel) << "this_grid().sync();" << std::endl;
 
         int it = 0;
 
@@ -3978,10 +3989,27 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
     if (stageDef->type() == UpdateNode)
         stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
     
+    std::string numThreadsVar = "numThreads_"+ std::to_string(kernelCall);
+    std::string numThreadBlocksVar = "numThreadBlocks_"+std::to_string(kernelCall);
+    
+    std::stringstream numThreads;
+    std::stringstream numThreadBlocks;
     std::stringstream call;
     if (stageDef->type() == MatMulNode) {
         call << indent(indentLevel) << cfunc.name << "(";
-    } else {
+        int ii = 0;
+        for (auto iter : cfunc.arguments) {
+            call << iter->name();
+            if (ii != cfunc.arguments.size() - 1)
+                call << ", ";
+            ii++;
+        }
+
+        if (stageDef->type() == MatMulNode)
+            call << ", " << cublasHandleVar;
+        call << ", " << commSizeArg << ", " << rankVar << ")";
+
+    } else if (cfunc.useCooperativeGrid == false) {
         if (stageDef->type() == BinaryPointwiseOpNode) {
             totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
         } else if (stageDef->type() == ReduceTensorNode) {
@@ -3992,28 +4020,58 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
             ASSERT(false, "Not implemented for node type\n");
         }
 
-        std::string numThreadsVar = "numThreads_"+ std::to_string(kernelCall);
-        std::string numThreadBlocksVar = "numThreadBlocks_"+std::to_string(kernelCall);
-        std::stringstream numThreads;
-        std::stringstream numThreadBlocks;
         numThreads << "size_t " << numThreadsVar << " = (size_t)min(" << totalThreadsVar << ", 256UL);";
         numThreadBlocks << "size_t " << numThreadBlocksVar << " = DIVUP(" << totalThreadsVar << ", " << numThreadsVar << ");";
 
         call << indent(indentLevel) << totalThreads.str() << std::endl << indent(indentLevel) << numThreads.str() << std::endl << indent(indentLevel) << numThreadBlocks.str() << std::endl;
         call << indent(indentLevel) << cfunc.name << "<<<" << numThreadBlocksVar << ", " << numThreadsVar << ", "<< 0 << ", " << streamArg <<">>>(";
-    }
-    
-    int ii = 0;
-    for (auto iter : cfunc.arguments) {
-        call << iter->name();
-        if (ii != cfunc.arguments.size() - 1)
-            call << ", ";
-        ii++;
+        int ii = 0;
+        for (auto iter : cfunc.arguments) {
+            call << iter->name();
+            if (ii != cfunc.arguments.size() - 1)
+                call << ", ";
+            ii++;
+        }
+
+        if (stageDef->type() == MatMulNode)
+            call << ", " << cublasHandleVar;
+        call << ", " << commSizeArg << ", " << rankVar << ")";
+
+    } else {
+        numThreads << "dim3 " << numThreadsVar << " = {256, 1, 1};" << std::endl;
+        numThreadBlocks << "dim3 " << numThreadBlocksVar << " = {1, 1, 1};" << std::endl;
+
+        std::string kernelArgsVar = "args_"+std::to_string(kernelCall);
+        std::string maxActiveBlocks = printCudaOccupancyMaxActiveBlocksPerMultiprocessor(numThreadBlocksVar+".x", cfunc.name, numThreadsVar+".x", 0);
+
+        call << indent(indentLevel) << cudaCheck(maxActiveBlocks) << std::endl;
+        call << indent(indentLevel) << numThreadBlocksVar << ".x = 80 * " << numThreadBlocksVar << ".x;" << std::endl;
+        call << indent(indentLevel) << "void* " << kernelArgsVar << "[] = {";
+        int ii = 0;
+        for (auto iter : cfunc.arguments) {
+            call << "&" << iter->name();
+            if (ii != cfunc.arguments.size() - 1)
+                call << ", ";
+            ii++;
+        }
+        call << ", &" << commSizeArg << ", &" << rankVar << ")" << "};" << std::endl;
+        call << indent(indentLevel) << cudaCheck(printCudaLaunchCooperativeKernel(cfunc.name, numThreadBlocksVar, numThreadsVar, kernelArgsVar, 0, streamArg)) << std::endl;
     }
 
-    if (stageDef->type() == MatMulNode)
-        call << ", " << cublasHandleVar;
-    call << ", " << commSizeArg << ", " << rankVar << ")";
+    /**
+     * 
+  dim3 threads = {256, 1,1};
+  dim3 blocks = {1,1,1};
+  int blockspersm  = 0;
+  CUDACHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+    &blockspersm, (void*)binOpFunc0, threads.x, 0));
+    blocks.x = 80 * blockspersm;
+  void* args[] = {
+    &N, &lr, &beta1, &beta2, &gamma, &w, &g, &m, &v, &S5, &S6, &S7, &S8, &comm_size, &rank
+  };
+  CUDACHECK(cudaLaunchCooperativeKernel((void*)binOpFunc0, blocks, threads, args, 0, stream));
+     */
+    
     kernelCall++;
     return call.str();
 }

@@ -10,6 +10,9 @@
 #include <string>
 #include <vector>
 #include <cuda_fp16.h>
+#include <cooperative_groups.h>
+
+using namespace cooperative_groups;
 
 #define DIVUP(x,y) ((x) + (y) - 1)/(y)
 
