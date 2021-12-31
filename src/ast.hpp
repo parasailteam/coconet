@@ -349,7 +349,6 @@ public:
         return used;
     }
 
-
     virtual ~ExpressionImpl() {}
 };
 
@@ -889,6 +888,30 @@ public:
         StageImpl newS = *this;
         newS.setName(newName);
         return newS;
+    }
+
+    std::set<std::shared_ptr<StageImpl>> dependsOnStages()
+    {
+        std::set<std::shared_ptr<StageImpl>> dependent;
+        std::queue<std::shared_ptr<AstNodeImpl>> exprQueue;
+        std::unordered_set<std::shared_ptr<AstNodeImpl>> visitedStages;
+
+        exprQueue.push(definition());
+
+        while (!exprQueue.empty()) {
+            auto expr = exprQueue.front();
+            exprQueue.pop();
+
+            auto used = AstNodeImpl::asExpressionImpl(expr)->usedExprs();
+            for (auto u : used) {
+                if (u->type() == StageNode) {
+                    dependent.insert(AstNodeImpl::asStageImpl(u));
+                    exprQueue.push(u);
+                }
+            }                
+        }
+
+        return dependent;
     }
 };
 

@@ -22,6 +22,7 @@ const std::string commSizeArg = "comm_size";
 const std::string commSizeTy = "int";
 const std::string cublasHandleVar = "cublasHandle";
 const std::string cublasHandleTy = "cublasHandle_t";
+const std::string threadIdxInGrid = "threadIdx.x + blockIdx.x * blockDim.x";
 
 class NumElemGen : public AstVisitor
 {
@@ -519,7 +520,7 @@ std::string iteratorInit(size_t ndims, std::string indentStr)
 {
     std::string s = "";
     if (ndims >= 1) 
-        s += indentStr + "int i0 = threadIdx.x + blockDim.x*blockIdx.x;\n";
+        s += indentStr + "int i0 = threadIdx.x + blockDim.x*blockIdx.x;";
     
     if (ndims >= 2)
         s += indentStr + "int i1 = threadIdx.y + blockDim.y*blockIdx.y;";
@@ -700,7 +701,10 @@ class PointwiseOpCodegen : public AstVisitor
                 if (storageLoc != shptr && shptr->layout() == Sliced && storageLoc->layout() != Sliced) {
                     os_ << genNumElem(shptr) << " * " << rankVar << " + ";
                 }
-                os_ << iteratorForDim(0);
+                if (node.isPointwise())
+                    os_ << "0";
+                else
+                    os_ << iteratorForDim(0);
                 os_ << "]";
             }
         }
@@ -868,6 +872,8 @@ struct CFunc {
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
     bool isCUDA;
     AstNodeType type;
+    bool useCooperativeGrid;
+    std::set<std::shared_ptr<StageImpl>> intermediates;
 };
 
 struct CStruct {
@@ -1321,6 +1327,9 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     InputsVisitor inputsVisitor;
     std::vector<std::shared_ptr<StageImpl>> outStages = pipeStage->stages();
     
+    std::vector<std::shared_ptr<StageImpl>> normStages;
+    std::set<std::shared_ptr<StageImpl>> intermediates;
+
     std::set<std::shared_ptr<ExpressionImpl>> binOpInputs;
     for (auto stage : pipeStage->stages()) {
         auto inputs = stage->usedExprs();
@@ -1343,11 +1352,47 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
         binOpInputs.insert(it.second);
     }
 
+    //Add output of Norm as an input
+    for (auto stage : pipeStage->stages()) {
+        if (stage->definition()->type() == NormNode) {
+            binOpInputs.insert(stage);
+            normStages.push_back(stage);
+            //Each norm requires a memory location and hence is an intermediate
+            intermediates.insert(stage);
+        }
+    }
+
+    //For each norm obtain all the stages that the norm depends on.
+    //Also, find all stages that uses norm and a stage norm depends on.
+    std::set<std::shared_ptr<StageImpl>> commonExprsForNorm;
+    //TODO: need a better name 
+    for (auto normStage : normStages) {
+        auto dependsOnStages = normStage->dependsOnStages();
+    
+        for (auto stage : outStages) {
+            auto usedExprs = stage->usedExprs();
+            if (usedExprs.find(normStage) != usedExprs.end()) {
+                auto intersection = setIntersection(dependsOnStages, usedExprs);
+                commonExprsForNorm.insert(intersection.begin(), intersection.end());
+            }
+        }
+    }
+
+    for (auto commonExpr : commonExprsForNorm) {
+        //All common expr are stored in memory
+        pipeStage->setStorageLocation(commonExpr, Memory);
+        intermediates.insert(commonExpr);
+        binOpInputs.insert(commonExpr);
+    }
+
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
+
     int ii = 0;
     for (auto iter : binOpInputs) {
-        if (iter->type() == StageNode && pipeStage->getStorageLocation(AstNodeImpl::asStageImpl(iter)) == Register)
+        if (iter->type() == StageNode && 
+            pipeStage->getStorageLocation(AstNodeImpl::asStageImpl(iter)) == Register) {
             continue;
+        }
         arguments.insert(iter);
         codeStream << elemTypeToCType(iter->elemType()) << " ";
         if (iter->type() == TensorNode || iter->type() == StageNode)
@@ -1363,45 +1408,132 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
-
-    //Generate single dimension code for binary pointwise 
-    codeStream << iteratorInit(0, indent(1)) << std::endl;
     
-    //Print All Binary Operations
+    /**Generate all operations**/
+    std::stringstream normInits;
+
     for (size_t it = 0; it < outStages.size(); it++) {
         std::stringstream binopCodeStream;
         std::shared_ptr<StageImpl> output = outStages[it];
         auto stageDef = output->definition();
-        if (stageDef->type() == UpdateNode)
-            stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
+
+        //Initialize Norm memory locs
         if (stageDef->type() == NormNode) {
-            if (pipeStage->getStorageLocation(output) == Register) {
-                codeStream << indent(1) << elemTypeToCType(output->elemType()) << " " << output->name() << " = 1;" << std::endl;
+            normInits << indent(2) << "*" << output->name() << " = 0;" << std::endl;
+        }
+    }
+
+    int indentLevel = 1;
+
+    if (normStages.empty()) {
+        //Generate single dimension code for binary pointwise 
+        codeStream << iteratorInit(1, indent(indentLevel)) << std::endl;
+        // No norm stage, so it is fine.
+        for (size_t it = 0; it < outStages.size(); it++) {
+            std::stringstream binopCodeStream;
+            std::shared_ptr<StageImpl> output = outStages[it];
+            auto stageDef = output->definition();
+            if (stageDef->type() == UpdateNode)
+                stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
+            if (stageDef->type() == NormNode) {
+                auto norm = AstNodeImpl::asNormImpl(stageDef);
+                codeStream << indent(indentLevel) << "atomicAdd(" << output->name() << ", " << norm->arg()->name() <<"[" << iteratorForDim(0) << "]);" << std::endl;
+                //For Norm add atomic update and synchronize all thread blocks
+                codeStream << indent(indentLevel) << "this_grid().sync();" << std::endl;
+            } else {    
+                std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
+                PointwiseOpCodegen binOpCodegen(binopCodeStream, 
+                                            pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+                binOpCodegen.print(*binOpNode);
+                //Print assignment to output stage
+                //If stored in a register then emit declaration
+                if (pipeStage->getStorageLocation(output) == Register) {
+                    codeStream << indent(indentLevel) << elemTypeToCType(output->elemType()) << " " << output->name() << ";" << std::endl;
+                }
+                std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : 
+                                pipeline.explicitStoreLocations().at(output)->name();
+                codeStream << indent(indentLevel) << name;
+                if (pipeStage->getStorageLocation(output) == Memory) {
+                    codeStream << "[" << iteratorForDim(0) << "]" ;
+                }
+                
+                codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
             }
-        } else {    
-            std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
-            PointwiseOpCodegen binOpCodegen(binopCodeStream, 
-                                        pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
-            binOpCodegen.print(*binOpNode);
-            //Print assignment to output stage
-            //If stored in a register then emit declaration
-            if (pipeStage->getStorageLocation(output) == Register) {
-                codeStream << indent(1) << elemTypeToCType(output->elemType()) << " " << output->name() << ";" << std::endl;
+        }
+    } else {
+        /* Norm fused with other operations is implemented using Cooperative Grid Group and grid strided loops
+        * After computing the grid strided loop, a this_grid().sync() is generated.
+        * Expressions using a norm output might also use a stage which has a RAW dependency with norm (i.e., a path from stage to the norm in the DAG).
+        * These input stages cannot be stored in registers because they are in next grid strided loop.
+        * Therefore, a norm "breaks" the fused loop and the input to norm is an intermediate.
+        */
+
+        codeStream << indent(indentLevel) << "if (" << threadIdxInGrid << " == 0) {" << std::endl;
+        codeStream << normInits.str();
+        codeStream << indent(indentLevel) << "}" << std::endl;
+        codeStream << indent(indentLevel) << "this_grid().synchronize();" << std::endl;
+
+        int it = 0;
+
+        while (it < outStages.size()) {
+            //Generate grid strided loops
+            codeStream << indent(indentLevel) << "for (" << iteratorInit(1, indent(0)) << " " << iteratorForDim(0) << " < " << genNumElem(*liveouts.begin()) << "; " << iteratorForDim(0) << " += gridDim.x * blockDim.x) {" << std::endl;
+            indentLevel += 1;
+
+            for (; it < outStages.size() && outStages[it]->definition()->type() != NormNode; it++) {
+                std::stringstream binopCodeStream;
+                auto output = outStages[it];
+                auto stageDef = output->definition();
+                if (stageDef->type() == UpdateNode) {
+                    stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
+                } else if (stageDef->type() == BinaryPointwiseOpNode) {    
+                    std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
+                    PointwiseOpCodegen binOpCodegen(binopCodeStream, 
+                                                pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+                    binOpCodegen.print(*binOpNode);
+                    //Print assignment to output stage
+                    //If stored in a register then emit declaration
+                    if (pipeStage->getStorageLocation(output) == Register) {
+                        codeStream << indent(indentLevel) << elemTypeToCType(output->elemType()) << " " << output->name() << ";" << std::endl;
+                    }
+                    std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : 
+                                    pipeline.explicitStoreLocations().at(output)->name();
+                    codeStream << indent(indentLevel) << name;
+                    if (pipeStage->getStorageLocation(output) == Memory) {
+                        codeStream << "[" << iteratorForDim(0) << "]" ;
+                    }
+                    
+                    codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
+                }
             }
-            std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : 
-                            pipeline.explicitStoreLocations().at(output)->name();
-            codeStream << indent(1) << name;
-            if (pipeStage->getStorageLocation(output) == Memory) {
-                codeStream << "[" << iteratorForDim(0) << "]" ;
+
+            if (it < outStages.size()) {
+                auto output = outStages[it];
+                auto stageDef = output->definition();
+                if (stageDef->type() == NormNode) {
+                    auto norm = AstNodeImpl::asNormImpl(stageDef);
+                    codeStream << indent(indentLevel) << "atomicAdd(" << output->name() << ", " << norm->arg()->name() <<"[" << iteratorForDim(0) << "]);" << std::endl;
+                    //For Norm add atomic update and synchronize all thread blocks
+                    indentLevel -= 1;
+                    codeStream << indent(indentLevel) << "}" << std::endl;
+                    codeStream << indent(indentLevel) << "this_grid().sync();" << std::endl;
+                } else {
+                    indentLevel -= 1;
+                    codeStream << indent(indentLevel) << "}" << std::endl;
+                }
+
+                it++;
+            } else {
+                indentLevel -= 1;
+                codeStream << indent(indentLevel) << "}" << std::endl;
             }
-            
-            codeStream << " = " << binopCodeStream.str() << ";" << std::endl;
         }
     }
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), arguments, true, BinaryPointwiseOpNode});
+    return CFunc({binOpFuncName, codeStream.str(), arguments, true, BinaryPointwiseOpNode,
+    !normStages.empty(), intermediates});
 }
 
 std::string generateStageCompUsingMULTI(Pipeline& pipeline, std::shared_ptr<StageImpl> stage, std::shared_ptr<StageImpl> commCollStage, std::string funcName,
@@ -4151,6 +4283,9 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         if (pipeline_.outputs().count(liveout) == 0) {
                             intermediateStages.push_back({liveout, true});
                         }
+                    }
+                    for (auto intermediate : cfunc.intermediates) {
+                        intermediateStages.push_back({intermediate, true});
                     }
                     pipelineStageName = cfunc.name;
                 }

@@ -368,11 +368,18 @@ namespace ACCCDSL {
                     stageStoreLoc_[stage] = Register;
             }
 
-            //If any stage has an update node then set its location to memory
+            //If any stage has an update node or a norm node then set its location to memory
             for (auto stage : stages()) {
                 if (stage->definition()->type() == UpdateNode)
                     stageStoreLoc_[stage] = Memory;
+                if (stage->definition()->type() == NormNode)
+                    stageStoreLoc_[stage] = Memory;
             }
+        }
+
+        void setStorageLocation(std::shared_ptr<StageImpl> stage, StageStoreLocation loc) 
+        {
+            stageStoreLoc_[stage] = loc;
         }
 
         void setTopoOrder(int topoOrder) {topoOrder_ = topoOrder;}
