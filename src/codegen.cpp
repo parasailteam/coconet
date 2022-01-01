@@ -337,7 +337,7 @@ void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::
 
 std::string printCudaOccupancyMaxActiveBlocksPerMultiprocessor(std::string blockspersm, std::string funcname, std::string threads, int shmem)
 {
-    return "cudaOccupancyMaxActiveBlocksPerMultiprocessor(&" + blockspersm + ", (void*)" + funcname + ", " + threads + ", " + std::to_string(shmem) + ")";
+    return "cudaOccupancyMaxActiveBlocksPerMultiprocessor((int*)&" + blockspersm + ", (void*)" + funcname + ", " + threads + ", " + std::to_string(shmem) + ")";
 }
 
 std::string printCudaLaunchCooperativeKernel(std::string funcname, std::string blocks, std::string threads, std::string args, int shmem, std::string stream)
@@ -4043,7 +4043,9 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
 
         std::string kernelArgsVar = "args_"+std::to_string(kernelCall);
         std::string maxActiveBlocks = printCudaOccupancyMaxActiveBlocksPerMultiprocessor(numThreadBlocksVar+".x", cfunc.name, numThreadsVar+".x", 0);
-
+        
+        call << indent(indentLevel) << numThreads.str();
+        call << indent(indentLevel) << numThreadBlocks.str();
         call << indent(indentLevel) << cudaCheck(maxActiveBlocks) << std::endl;
         call << indent(indentLevel) << numThreadBlocksVar << ".x = 80 * " << numThreadBlocksVar << ".x;" << std::endl;
         call << indent(indentLevel) << "void* " << kernelArgsVar << "[] = {";
@@ -4054,7 +4056,7 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
                 call << ", ";
             ii++;
         }
-        call << ", &" << commSizeArg << ", &" << rankVar << ")" << "};" << std::endl;
+        call << ", &" << commSizeArg << ", &" << rankVar << "};" << std::endl;
         call << indent(indentLevel) << cudaCheck(printCudaLaunchCooperativeKernel(cfunc.name, numThreadBlocksVar, numThreadsVar, kernelArgsVar, 0, streamArg)) << std::endl;
     }
 
