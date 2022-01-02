@@ -46,10 +46,6 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
     
     static std::shared_ptr<ConstInt32> one(new ConstInt32(1));
 
-    if (dimsOp1 != dimsOp2 && (!operand(0)->isPointwise() && !operand(1)->isPointwise())) {
-        ASSERT(false, "First operand dims '"<<dimsOp1<<"' do not match with second '"<<dimsOp2<<"'");
-    }
-    
     for (size_t dim = 0; dim < std::max(dimsOp1, dimsOp2); dim++) {
         if (operand(0)->isConstant() && operand(1)->isConstant()) {
             dimSizes_.push_back(one);
@@ -58,20 +54,25 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
         } else if (operand(1)->isConstant()) {
             dimSizes_.push_back(operand(0)->size(dim));
         } else {
-            auto sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
-            auto sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+            std::shared_ptr<ExpressionImpl> sizeOp1;
+            std::shared_ptr<ExpressionImpl> sizeOp2;
+
+            if (dim >= dimsOp1) {
+                sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+                sizeOp1 = sizeOp2;
+            } else if (dim >= dimsOp2) {
+                sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+                sizeOp2 = sizeOp1;
+            } else {
+                sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+                sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+            }
             
-            if (sizeOp1 != sizeOp2 && (!operand(0)->isPointwise() && !operand(1)->isPointwise())) {
+            if (sizeOp1 != sizeOp2) {
                 ASSERT(false, "First operand dims for dim '"<< dim <<"', '"<<sizeOp1<<"' do not match with second '"<<sizeOp2<<"'");
             }
 
-            if (operand(0)->isPointwise()) {
-                dimSizes_.push_back(sizeOp2);
-            } else if (operand(1)->isPointwise()) {
-                dimSizes_.push_back(sizeOp1);
-            } else {
-                dimSizes_.push_back(sizeOp1);
-            }
+            dimSizes_.push_back(sizeOp2);
         }
     }
 

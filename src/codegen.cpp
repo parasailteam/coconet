@@ -568,20 +568,21 @@ class PointwiseOpCodegen : public AstVisitor
         std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts_;
         CodeType codeType_;
         std::stringstream declarations;
+        bool genNumpyBroadcast;
 
     public:
         PointwiseOpCodegen(std::stringstream& os, PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
-                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), explicitType_(None), os_(os),
+                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), genNumpyBroadcast(false), explicitType_(None), os_(os),
                                  pipeStage_(pipeStage), pipeline_(pipeline), generateCheck_(generateCheck), codeType_(codeType),
                                  generateAsVars_(generateAsVars), mixedPrecisionCasts_(mixedPrecisionCasts) {}
         PointwiseOpCodegen(std::stringstream& os, Pipeline& pipeline, bool generateCheck,
                                  CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
             os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
-            useHalf2(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
+            useHalf2(false), genNumpyBroadcast(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
         PointwiseOpCodegen(std::stringstream& os, std::string iterator, Pipeline& pipeline, bool generateCheck, 
                                  CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
             os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
-            useHalf2(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
+            useHalf2(false), genNumpyBroadcast(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
 
         void print(ExpressionImpl& node) {
             node.accept(*this);
@@ -598,10 +599,13 @@ class PointwiseOpCodegen : public AstVisitor
         }
 
         void visit(TensorImpl& node) {
+            std::shared_ptr<TensorImpl> shptr = pipeline_.sharedPtrForAstPtr(&node);
             os_ << ((generateCheck_ ? "__" : "") + node.name());
             if (!generateAsVars_) {
                 os_ << "[";
                 os_ << iteratorForDim(0);
+                if (genNumpyBroadcast)
+                    os_ << "%" << genNumElem(shptr);
                 os_ << "]";
             }
         }
@@ -626,6 +630,7 @@ class PointwiseOpCodegen : public AstVisitor
         void visit(BinaryPointwiseOp& node) {
             os_ << "(";
             if (codeType_ == CodeType::CUDA && (explicitType_ == TensorElemType::Float16)) {
+                ASSERT(false, "To imlement numpy-broadcast.");
                 std::stringstream os0;
                 PointwiseOpCodegen codegen0(os0, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
                 codegen0.setExplicitType(explicitType_);
@@ -643,8 +648,13 @@ class PointwiseOpCodegen : public AstVisitor
                 os_ << (useHalf2 ? BinaryPointwiseOp::operatorToHalf2Func(node.op()) : BinaryPointwiseOp::operatorToHalfFunc(node.op()))
                     << "(" << os0.str() << ", " << os1.str() << ")";
             } else {
+                genNumpyBroadcast = false;
+                if (node.operand(0)->dims() < node.operand(1)->dims())
+                    genNumpyBroadcast = true;
                 node.operand(0)->accept(*this);
                 os_ << " " << BinaryPointwiseOp::operatorToStr(node.op()) << " ";
+                if (node.operand(1)->dims() < node.operand(0)->dims())
+                    genNumpyBroadcast = true;
                 node.operand(1)->accept(*this);
             }
             os_ << ")";
@@ -724,6 +734,8 @@ class PointwiseOpCodegen : public AstVisitor
                     os_ << "0";
                 else
                     os_ << iteratorForDim(0);
+                if (genNumpyBroadcast)
+                    os_ << "%" << genNumElem(shptr);
                 os_ << "]";
             }
         }

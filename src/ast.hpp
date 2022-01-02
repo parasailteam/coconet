@@ -288,7 +288,7 @@ public:
     virtual void accept(AstVisitor& v) = 0;
     virtual TensorLayout layout () {return layout_;}
     virtual size_t dims() {return dimSizes_.size();}
-    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return dimSizes_[dim];}
+    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return dimSizes_[dimSizes_.size() - 1 - dim];}
     virtual TensorElemType elemType() {return elemType_;}
     virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return dimSizes_;}
 
