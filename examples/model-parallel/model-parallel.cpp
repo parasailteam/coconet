@@ -17,7 +17,7 @@ void MM_AR_C()
 
     Stage layer = MatMul(in,w);
     Stage sum = AllReduce(Summation, layer);
-    Stage out = sum + r;
+    Stage out = Dropout(sum, 0.5);
     
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
 

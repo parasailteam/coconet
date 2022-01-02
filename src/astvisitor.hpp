@@ -155,6 +155,12 @@ public:
         StageImpl* b = new StageImpl(AstNodeImpl::asExpressionImpl(clone(node.definition())), node.scattered());
         addToMap(node, b);
     }
+    virtual void visit(DropoutImpl& node)
+    {
+        checkMap
+        DropoutImpl* b = new DropoutImpl(AstNodeImpl::asStageImpl(clone(node.arg())), node.prob());
+        addToMap(node, b);
+    }
     virtual void visit(UpdateImpl& node)
     {
         checkMap
@@ -277,6 +283,10 @@ class VisitChildrenVisitor : public AstVisitor {
     virtual void visit(UnaryPointwiseOp& node) {
         visitChildren(node);
     }
+    virtual void visit(DropoutImpl& node)
+    {
+        visitChildren(node);
+    }
     virtual void visit(PowerImpl& node) {
         visitChildren(node);
     }
@@ -385,7 +395,10 @@ public:
     void start(StageImpl& node) {
         visitChildren(node);
     }
-
+    virtual void visit(DropoutImpl& node)
+    {
+        visitChildren(node);
+    }
     virtual void visit(ScatterImpl& node) {
         visitChildren(node);
     }
@@ -458,6 +471,14 @@ public:
         node.operand(1)->accept(*this);
         os_ << ")";
     }
+    void visit(DropoutImpl& node) {
+        os_ << "Dropout(";
+        node.arg()->accept(*this);
+        os_ << ",";
+        os_ << node.prob();
+        os_ << ")";
+    }
+
     void visit(UnaryPointwiseOp& node) {
         visitChildren(node);
     }

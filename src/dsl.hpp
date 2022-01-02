@@ -146,6 +146,17 @@ public:
     declImpl(Stage)
 };
 
+class Dropout : public ContinuousExpression {
+public:
+    Dropout(Stage expr, float prob) : 
+          ContinuousExpression(std::shared_ptr<ACCCDSLImpl::DropoutImpl>(new ACCCDSLImpl::DropoutImpl(expr.impl(), prob)))
+    {
+        
+    }
+
+    declImpl(Dropout)
+};
+
 class Update : public ContinuousExpression {
 public:
     Update(Tensor t, ContinuousExpression definition) : 

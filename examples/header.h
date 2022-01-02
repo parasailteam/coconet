@@ -11,6 +11,8 @@
 #include <vector>
 #include <cuda_fp16.h>
 #include <cooperative_groups.h>
+#include <curand_kernel.h>
+#include <curand.h>
 
 using namespace cooperative_groups;
 

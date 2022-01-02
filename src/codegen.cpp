@@ -23,6 +23,7 @@ const std::string commSizeTy = "int";
 const std::string cublasHandleVar = "cublasHandle";
 const std::string cublasHandleTy = "cublasHandle_t";
 const std::string threadIdxInGrid = "threadIdx.x + blockIdx.x * blockDim.x";
+const std::string curandStateVar = "curandState0";
 
 class NumElemGen : public AstVisitor
 {
@@ -84,6 +85,10 @@ class NumElemGen : public AstVisitor
         }
 
         void visit(StageImpl& node) {
+        }
+        virtual void visit(DropoutImpl& node)
+        {
+            visitChildren(node);
         }
         void visit(NormImpl& node) {
         }
@@ -562,6 +567,7 @@ class PointwiseOpCodegen : public AstVisitor
         bool useHalf2;
         std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts_;
         CodeType codeType_;
+        std::stringstream declarations;
 
     public:
         PointwiseOpCodegen(std::stringstream& os, PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
@@ -580,6 +586,8 @@ class PointwiseOpCodegen : public AstVisitor
         void print(ExpressionImpl& node) {
             node.accept(*this);
         }
+
+        std::string decls() {return declarations.str();}
 
         void setExplicitType(TensorElemType t) {
             explicitType_ = t;
@@ -719,7 +727,14 @@ class PointwiseOpCodegen : public AstVisitor
                 os_ << "]";
             }
         }
-
+        virtual void visit(DropoutImpl& node)
+        {
+            declarations << "curandState " << curandStateVar << ";" << std::endl;
+            declarations << "curand_init(0, 0, 0, &" << curandStateVar << ");" << std::endl;
+            os_ << "(curand_uniform(&" << curandStateVar << ") < " << node.prob() << ") ? ";
+            visitChildren(node);
+            os_ << " : (" << elemTypeToCType(node.elemType()) << ") 0";
+        }
         virtual void visit(ScatterImpl& node) {
             visitChildren(node);
         }
@@ -1271,6 +1286,69 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
     return CFunc({funcName, codeStream.str(), redOpInputs, true, NormNode});
 }
 
+
+CFunc generateDropoutCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<DropoutImpl> dropoutNode)
+{
+    std::stringstream codeStream;
+    static int nameCounter = 0;
+    std::string binOpFuncName = "dropout" + std::to_string(nameCounter++);
+
+    std::set<std::shared_ptr<ExpressionImpl>> binOpInputs = dropoutNode->usedExprs();
+
+    codeStream << "__global__ void " << binOpFuncName << "(";
+
+    //Print arguments of CUDA Kernel
+    //Add output to arguments too.
+    binOpInputs.insert(output);
+
+    for (auto it : pipeline.explicitStoreLocations()) {
+        binOpInputs.erase(it.first);
+        binOpInputs.insert(it.second);
+    }
+    auto dimExprs = allDimExprs(binOpInputs.begin(), binOpInputs.end());
+    binOpInputs.insert(dimExprs.begin(), dimExprs.end());
+    
+    int ii = 0;
+    for (auto iter : binOpInputs) {
+        codeStream << elemTypeToCType(iter->elemType()) << " ";
+        if (iter->type() == TensorNode || iter->type() == StageNode)
+            codeStream << "* ";
+        codeStream << iter->name();
+        if (ii != binOpInputs.size() - 1)
+            codeStream << ", ";
+        ii++;
+    }
+
+    codeStream << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+    codeStream << ") {" << std::endl;
+
+    //Function body
+    //Iterator initialization from threadIdx and blockIdx
+
+    //All code generated for binary operations will be single dimension.
+    std::string varIterator = iteratorInit(1, indent(1));
+
+    codeStream << varIterator << std::endl;
+
+    //Print Binary operation
+    std::stringstream binopCodeStream;
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, false, CodeType::CUDA, isMixedPrecision(dropoutNode));
+    binOpCodegen.print(*dropoutNode);
+    
+    //Add declarations
+    codeStream << indent(1) << binOpCodegen.decls() << std::endl;
+
+    //Print assignment to output stage
+    std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
+    codeStream << indent(1) << name;
+    codeStream << "[" << iteratorForDim(0) << "]" 
+               << " = " << binopCodeStream.str() << ";" << std::endl;
+
+    codeStream << "}";
+
+    return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, DropoutNode});
+}
+
 CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
 {
     std::stringstream codeStream;
@@ -1330,7 +1408,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> outpu
     return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, BinaryPointwiseOpNode});
 }
 
-CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
+CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 {
     std::stringstream codeStream;
     static int nameCounter = 0;
@@ -1446,12 +1524,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
             auto stageDef = output->definition();
             if (stageDef->type() == UpdateNode)
                 stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
-            if (stageDef->type() == NormNode) {
-                auto norm = AstNodeImpl::asNormImpl(stageDef);
-                codeStream << indent(indentLevel) << "atomicAdd(" << output->name() << ", " << norm->arg()->name() <<"[" << iteratorForDim(0) << "]);" << std::endl;
-                //For Norm add atomic update and synchronize all thread blocks
-                codeStream << indent(indentLevel) << "this_grid().sync();" << std::endl;
-            } else {    
+            else {    
                 std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
                 PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                             pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
@@ -4010,7 +4083,7 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
         call << ", " << commSizeArg << ", " << rankVar << ")";
 
     } else if (cfunc.useCooperativeGrid == false) {
-        if (stageDef->type() == BinaryPointwiseOpNode) {
+        if (stageDef->type() == BinaryPointwiseOpNode || stageDef->type() == DropoutNode) {
             totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(outStage) << ";";
         } else if (stageDef->type() == ReduceTensorNode) {
             totalThreads << "size_t " << totalThreadsVar << " = (size_t)" << genNumElem(AstNodeImpl::asReduceTensorImpl(stageDef)->arg()) << ";";
@@ -4036,7 +4109,6 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
         if (stageDef->type() == MatMulNode)
             call << ", " << cublasHandleVar;
         call << ", " << commSizeArg << ", " << rankVar << ")";
-
     } else {
         numThreads << "dim3 " << numThreadsVar << " = {256, 1, 1};" << std::endl;
         numThreadBlocks << "dim3 " << numThreadBlocksVar << " = {1, 1, 1};" << std::endl;
@@ -4269,6 +4341,13 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         useCUBLAS = true;
                         break;
                     }
+                    case DropoutNode: {
+                        CFunc cfunc = generateDropoutCUDA(pipeline_, outStage, AstNodeImpl::asDropoutImpl(stageDef));
+                        subFunctions.push_back(cfunc);
+                        funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                        pipelineStageName = cfunc.name;
+                        break;
+                    }
                     default:
                         ASSERT(false, "Case for type '" << AstNodeTypeToStr(stageDef->type()) << "' not defined.");
                 }
@@ -4328,7 +4407,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                     funcBody << indent(1) << generateFusedNCCLCommColl(pipeline_, pipelineStage) << std::endl;
                     pipelineStageName = "FusedAllReduce";
                 } else {
-                    CFunc cfunc = generateBinOpCodeCUDA(pipeline_, pipelineStage);
+                    CFunc cfunc = generateFusedBinOpCodeCUDA(pipeline_, pipelineStage);
                     subFunctions.push_back(cfunc);
                     std::shared_ptr<StageImpl> sliceStage = nullptr;
                     for (auto stage : pipelineStage->stages()) {

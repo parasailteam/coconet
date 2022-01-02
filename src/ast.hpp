@@ -64,6 +64,7 @@ enum AstNodeType {
     NormNode,
     ReduceScatterNode,
     FusedAllReduceNone,
+    DropoutNode,
     StageNode,
     UpdateNode,
     FusedNode,
@@ -139,6 +140,7 @@ class ConstUInt32;
 class ConstInt32;
 class ScatterImpl;
 class IteImpl;
+class DropoutImpl;
 
 std::string AstNodeTypeToStr(AstNodeType t);
 std::string TensorElemTypeToStr(TensorElemType t);
@@ -207,6 +209,7 @@ public:
     asChild(ConstInt32);
     asChild(IteImpl);
     asChild(NormImpl);
+    asChild(DropoutImpl);
 };
 
 class AstVisitor {
@@ -225,6 +228,7 @@ public:
     virtual void visit(PowerImpl& node) = 0;
     virtual void visit(ReduceTensorImpl& node) = 0;
     virtual void visit(NormImpl& node) = 0;
+    virtual void visit(DropoutImpl& node) = 0;
     virtual void visit(StageImpl& node) = 0;
     virtual void visit(UpdateImpl& node) = 0;
     virtual void visit(VariableImpl& node) = 0;
@@ -912,6 +916,34 @@ public:
         }
 
         return dependent;
+    }
+};
+
+
+class DropoutImpl : public ExpressionImpl {
+private:
+    float prob_;
+public:
+    DropoutImpl(std::shared_ptr<StageImpl> arg, float prob)  : 
+        ExpressionImpl(AstNodeType::DropoutNode, false, arg), prob_(prob) 
+    {
+        setupAndCheckDimensions();
+    }
+    virtual void accept(AstVisitor& v) {
+        v.visit(*this);
+    }
+    float prob(){return prob_;}
+    std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
+    std::string name() {return name_;}
+
+    virtual void setupAndCheckDimensions() {
+        dimSizes_.clear();
+        for(size_t s = 0; s < arg()->dims(); s++) {
+            dimSizes_.push_back(arg()->size(s));
+        }
+        
+        layout_ = arg()->layout();
+        elemType_ = arg()->elemType();
     }
 };
 
