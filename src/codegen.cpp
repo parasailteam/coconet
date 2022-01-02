@@ -1209,8 +1209,8 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
     std::string cublasTypeC = elemTypeToCUBLASType(output->elemType());
 
     //Declare alpha and beta
-    codeStream << indent(1) << "float alpha = 1.0f;" << std::endl
-               << indent(1) << "float beta = 0.0f;" << std::endl;
+    codeStream << indent(1) << "const half alpha = __float2half(1.0f);" << std::endl
+               << indent(1) << "const half beta = __float2half(0.0f);" << std::endl;
     
     std::string M = genNumElem(output, 0, output->dimSizes().size() - 1);
     std::string N = genNumElem(output, output->dimSizes().size() - 1, output->dimSizes().size());

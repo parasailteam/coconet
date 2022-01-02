@@ -13,6 +13,7 @@
 #define TYPE_REDUCE_KERNEL 0
 
 
+
 #if TYPE_REDUCE_KERNEL == 0
 
 template<typename T>    struct mixedbinOp1 {    
