@@ -52,24 +52,35 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
         std::shared_ptr<ExpressionImpl> sizeOp2;
 
         if (dimsOp1 > dimsOp2) {
-            sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+            sizeOp1 = operand(0)->isPointwise() ? one : operand(0)->size(dim);
             
             if (dim < broadcastDim) {
                 sizeOp2 = sizeOp1;
             } else {
-                sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+                sizeOp2 = operand(1)->isPointwise() ? one : operand(1)->size(dim);
             }
         } else if (dimsOp2 > dimsOp1) {
-            sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+            sizeOp2 = operand(1)->isPointwise() ? one : operand(1)->size(dim);
             
             if (dim < broadcastDim) {
                 sizeOp1 = sizeOp2;
             } else {
-                sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+                sizeOp1 = operand(0)->isPointwise() ? one : operand(0)->size(dim);
             }
         } else {
-            sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
-            sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+            if (operand(0)->isPointwise() && operand(1)->isPointwise()) {
+                sizeOp1 = one;
+                sizeOp2 = one;
+            } else if (operand(0)->isPointwise()) {
+                sizeOp2 = operand(1)->size(dim);
+                sizeOp1 = sizeOp2;
+            } else if (operand(1)->isPointwise()) {
+                sizeOp1 = operand(0)->size(dim);
+                sizeOp2 = sizeOp1;
+            } else {
+                sizeOp1 = operand(0)->size(dim);
+                sizeOp2 = operand(1)->size(dim);
+            }
         }
 
         if (sizeOp1 != sizeOp2) {
