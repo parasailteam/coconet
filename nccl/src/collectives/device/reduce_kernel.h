@@ -10,7 +10,11 @@
 #include <cuda_fp16.h>
 #include <stdio.h>
 
-#define TYPE_REDUCE_KERNEL 1
+#define TYPE_REDUCE_KERNEL 0
+
+
+
+
 
 
 

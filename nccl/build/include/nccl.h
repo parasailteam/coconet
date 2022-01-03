@@ -7,7 +7,11 @@
 #ifndef NCCL_H_
 #define NCCL_H_
 
-#define TYPE_NCCL_H_IN 1
+#define TYPE_NCCL_H_IN 0
+
+
+
+
 
 
 

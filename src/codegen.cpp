@@ -4242,7 +4242,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             }
         } else {
             //Traverse the internal pipeline stage DAG to generate overlapped and/or fused stages
-            if (false && pipeline_.name() == "model_parallel") {
+            if (pipeline_.name() == "model_parallel") {
                 std::shared_ptr<StageImpl> matmulStage = nullptr;
                 std::shared_ptr<StageImpl> rsStage = nullptr;
                 std::shared_ptr<StageImpl> agStage = nullptr;

@@ -31,7 +31,11 @@
   } \
 } while (0)
 
-#define TYPE_PRIMS 1
+#define TYPE_PRIMS 0
+
+
+
+
 
 
 
