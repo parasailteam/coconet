@@ -1041,7 +1041,7 @@ CFunc generateReduceCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, 
     //TODO: Improve this by using NVIDIA CUB, maybe?
     switch (reduceTensor->op()) {
         case Summation:
-            codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "]);" << std::endl;
+            codeStream << "atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "]);" << std::endl;
             break;
         case Maximum:
         case Multiplication:
@@ -1166,6 +1166,7 @@ std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std
     return codeStream.str();
 }
 
+
 CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<NormImpl> reduceTensor)
 {
     std::stringstream codeStream;
@@ -1195,9 +1196,14 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
         inputName = pipeline.explicitStoreLocations().count(inputStage) == 0 ? reduceTensor->arg()->name() : pipeline.explicitStoreLocations().at(inputStage)->name();
     }
 
-    codeStream << indent(1);
-    //TODO: Improve this by using NVIDIA CUB, maybe?
-    codeStream << "__atomicAdd(" << name << ", " << inputName << "[" << iteratorAccessString(output) << "] * " << inputName << "[" << iteratorAccessString(output) << "]" << ");" << std::endl;
+    std::string normReg = "normReg_" + name;
+    std::string square = inputName + "[" + iteratorAccessString(output) + "] * " + inputName + "[" + iteratorAccessString(output) + "]";
+
+    codeStream << indent(1) << elemTypeToCType(reduceTensor->elemType()) << " " << normReg << " = " << square << ";" << std::endl;
+    codeStream << indent(1) << "for (int offset = warpSize/2; offset > 0; offset /= 2) {" << std::endl
+               << indent(2) << normReg << " += __shfl_down_sync(0xffffffff, " << normReg << ", offset);" << std::endl
+               << indent(1) << "}" << std::endl;
+    codeStream << "if (" << iteratorForDim(0) << "% warpSize == 0) atomicAdd(" << name << ", " << normReg << ");" << std::endl;
     codeStream << "}";
 
     return CFunc({funcName, codeStream.str(), redOpInputs, true, NormNode});
@@ -1371,15 +1377,9 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     /**Generate all operations**/
     std::stringstream normInits;
 
-    for (size_t it = 0; it < outStages.size(); it++) {
-        std::stringstream binopCodeStream;
-        std::shared_ptr<StageImpl> output = outStages[it];
-        auto stageDef = output->definition();
-
+    for (auto normStage : normStages) {
         //Initialize Norm memory locs
-        if (stageDef->type() == NormNode) {
-            normInits << indent(2) << "*" << output->name() << " = 0;" << std::endl;
-        }
+        normInits << indent(2) << "*" << normStage->name() << " = 0;" << std::endl;
     }
 
     int indentLevel = 1;
@@ -1431,6 +1431,14 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
         codeStream << indent(indentLevel) << "}" << std::endl;
         codeStream << indent(indentLevel) << "this_grid().sync();" << std::endl;
 
+        std::unordered_map<std::shared_ptr<StageImpl>, std::string> normStageToNormReg;
+
+        for (auto normStage : normStages) {
+            std::string regName = "normReg_" + normStage->name();
+            normStageToNormReg[normStage] = regName;
+            codeStream << indent(indentLevel) << elemTypeToCType(normStage->elemType()) << " " << regName << ";" << std::endl;
+        }
+
         int it = 0;
 
         while (it < outStages.size()) {
@@ -1474,10 +1482,23 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                 auto stageDef = output->definition();
                 if (stageDef->type() == NormNode) {
                     auto norm = AstNodeImpl::asNormImpl(stageDef);
-                    codeStream << indent(indentLevel) << "atomicAdd(" << output->name() << ", " << norm->arg()->name() <<"[" << iteratorForDim(0) << "]);" << std::endl;
-                    //For Norm add atomic update and synchronize all thread blocks
+                    std::string normReg = normStageToNormReg[output];
+
+                    std::string square = norm->arg()->name() + "[" + iteratorForDim(0) + "] * " + norm->arg()->name() + "[" + iteratorForDim(0) + "]";
+
+                    codeStream << indent(indentLevel) << normReg << " += " << square << ";" << std::endl;
+
                     indentLevel -= 1;
                     codeStream << indent(indentLevel) << "}" << std::endl;
+
+                    //Use warpShuffle's tree reduction
+                    codeStream << indent(indentLevel) << "for (int offset = warpSize/2; offset > 0; offset /= 2) {" << std::endl
+                            << indent(2) << normReg << " += __shfl_down_sync(0xffffffff, " << normReg << ", offset);" << std::endl
+                            << indent(1) << "}" << std::endl;
+                    codeStream << indent(indentLevel) << "if (" << "(" << threadIdxInGrid << ")" << "% warpSize == 0) " << std::endl 
+                               << indent(indentLevel+1)<< "atomicAdd(" << output->name() << ", " << normReg << ");" << std::endl;
+
+                    //For synchronize all thread blocks
                     codeStream << indent(indentLevel) << "this_grid().sync();" << std::endl;
                 } else {
                     indentLevel -= 1;
