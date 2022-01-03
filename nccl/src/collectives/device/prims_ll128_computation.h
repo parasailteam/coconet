@@ -6,7 +6,9 @@
 
 #include "op128.h"
 
-#define TYPE_PRIMS_LL128 0
+#define TYPE_PRIMS_LL128 1
+
+
 
 
 

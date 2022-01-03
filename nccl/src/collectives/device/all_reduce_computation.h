@@ -9,7 +9,9 @@
 #include "collectives.h"
 #include <cooperative_groups.h>
 
-#define TYPE_ALL_REDUCE 0
+#define TYPE_ALL_REDUCE 1
+
+
 
 
 

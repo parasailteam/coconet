@@ -1,4 +1,6 @@
-#define TYPE_PRIMS_LL 0
+#define TYPE_PRIMS_LL 1
+
+
 
 
 

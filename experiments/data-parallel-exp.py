@@ -8,7 +8,7 @@ import shutil
 import traceback
 
 FULL_PERF_EVAL = "1000"
-epochs = 100
+epochs = 1
 
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 7, "The script requires Python 3.7+ but is running on Python %d.%d"%(sys.version_info.major, sys.version_info.minor)
 if len(sys.argv) < 2:

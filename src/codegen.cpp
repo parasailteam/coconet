@@ -1474,7 +1474,9 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                 auto stageDef = output->definition();
                 if (stageDef->type() == NormNode) {
                     auto norm = AstNodeImpl::asNormImpl(stageDef);
-                    codeStream << indent(indentLevel) << "atomicAdd(" << output->name() << ", " << norm->arg()->name() <<"[" << iteratorForDim(0) << "]);" << std::endl;
+                    //TODO: HERE disabling atomicAdd for now
+                    codeStream << indent(indentLevel) <<" * "<< norm->arg()->name() << " = 1;"<<std::endl;
+                    //codeStream << indent(indentLevel) << "atomicAdd(" << output->name() << ", " << norm->arg()->name() <<"[" << iteratorForDim(0) << "]);" << std::endl;
                     //For Norm add atomic update and synchronize all thread blocks
                     indentLevel -= 1;
                     codeStream << indent(indentLevel) << "}" << std::endl;
