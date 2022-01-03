@@ -14,6 +14,12 @@
 
 
 
+
+
+
+
+
+
 #if TYPE_REDUCE_KERNEL == 0
 
 template<typename T>    struct mixedbinOp1 {    
