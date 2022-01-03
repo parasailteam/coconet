@@ -325,7 +325,7 @@ namespace ACCCDSL {
             return liveouts;
         }
 
-        std::set<std::shared_ptr<StageImpl>> liveinExprs()
+        std::set<std::shared_ptr<StageImpl>> liveinStages()
         {
             //Get all the live in expressions to the stage.
             std::set<std::shared_ptr<StageImpl>> liveins;
@@ -333,15 +333,24 @@ namespace ACCCDSL {
 
             for (auto stage : stages_) {
                 auto usedExprs = stage->childrenOfType<StageImpl>();
-                // std::cout << std::endl;
-                // std::cout << std::endl;
-                // for (auto e : usedExprs) std::cout << this << " u " << e.get() << std::endl;
-                // for (auto e : setStages) std::cout << this << " s " << e.get() << std::endl;
-                //An expression is livein if it is not generated in any of the other stages
+                //A stage is livein if it is not generated in any of the other stages
                 auto difference = setDifference(usedExprs, setStages);
-                // for (auto e : difference) std::cout << this << " d " << e.get() << std::endl;
-                // std::cout << std::endl;
-                // std::cout << std::endl;
+                liveins.insert(difference.begin(), difference.end());
+            }
+
+            return liveins;
+        }
+
+        std::set<std::shared_ptr<ExpressionImpl>> liveinExprs()
+        {
+            //Get all the live in expressions to the stage.
+            std::set<std::shared_ptr<ExpressionImpl>> liveins;
+            std::set<std::shared_ptr<ExpressionImpl>> setStages(stages().begin(), stages().end());
+
+            for (auto stage : stages_) {
+                auto usedExprs = stage->usedExprs();
+                //A stage is livein if it is not generated in any of the other stages
+                auto difference = setDifference(usedExprs, setStages);
                 liveins.insert(difference.begin(), difference.end());
             }
 
@@ -349,9 +358,9 @@ namespace ACCCDSL {
         }
 
         void setStorageLocation(const std::set<std::shared_ptr<StageImpl>>& pipelineOutputs)
-        {     
+        {
             auto liveouts = liveoutStages(pipelineOutputs);
-            auto liveins = liveinExprs();
+            auto liveins = liveinStages();
 
             for (auto stage : liveouts) {
                 //All liveouts are stored in memory

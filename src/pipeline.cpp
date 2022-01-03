@@ -44,36 +44,64 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
     size_t dimsOp1 = operand(0)->dims();
     size_t dimsOp2 = operand(1)->dims();
     
+    size_t broadcastDim = std::max(dimsOp1, dimsOp2) - std::min(dimsOp1, dimsOp2); 
     static std::shared_ptr<ConstInt32> one(new ConstInt32(1));
 
     for (size_t dim = 0; dim < std::max(dimsOp1, dimsOp2); dim++) {
-        if (operand(0)->isConstant() && operand(1)->isConstant()) {
-            dimSizes_.push_back(one);
-        } else if (operand(0)->isConstant()) {
-            dimSizes_.push_back(operand(1)->size(dim));
-        } else if (operand(1)->isConstant()) {
-            dimSizes_.push_back(operand(0)->size(dim));
-        } else {
-            std::shared_ptr<ExpressionImpl> sizeOp1;
-            std::shared_ptr<ExpressionImpl> sizeOp2;
+        std::shared_ptr<ExpressionImpl> sizeOp1;
+        std::shared_ptr<ExpressionImpl> sizeOp2;
 
-            if (dim >= dimsOp1) {
-                sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
-                sizeOp1 = sizeOp2;
-            } else if (dim >= dimsOp2) {
-                sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+        if (dimsOp1 > dimsOp2) {
+            sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+            
+            if (dim < broadcastDim) {
                 sizeOp2 = sizeOp1;
             } else {
                 sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+            }
+        } else if (dimsOp2 > dimsOp1) {
+            sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+            
+            if (dim < broadcastDim) {
+                sizeOp1 = sizeOp2;
+            } else {
                 sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
             }
-            
-            if (sizeOp1 != sizeOp2) {
-                ASSERT(false, "First operand dims for dim '"<< dim <<"', '"<<sizeOp1<<"' do not match with second '"<<sizeOp2<<"'");
-            }
-
-            dimSizes_.push_back(sizeOp2);
+        } else {
+            sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+            sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
         }
+
+        if (sizeOp1 != sizeOp2) {
+            ASSERT(false, "First operand dims for dim '"<< dim <<"', '"<< sizeOp1->name() <<"' do not match with second '"<< sizeOp2->name() <<"'");
+        }
+        dimSizes_.push_back(sizeOp2);
+        
+        // if (operand(0)->isConstant() && operand(1)->isConstant()) {
+        //     dimSizes_.push_back(one);
+        // } else if (operand(0)->isConstant()) {
+        //     dimSizes_.push_back(operand(1)->size(dim));
+        // } else if (operand(1)->isConstant()) {
+        //     dimSizes_.push_back(operand(0)->size(dim));
+        // } else {
+
+
+        //     if (dim >= dimsOp1) {
+        //         sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+        //         sizeOp1 = sizeOp2;
+        //     } else if (dim >= dimsOp2) {
+        //         sizeOp2 = sizeOp1;
+        //     } else {
+        //         sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
+        //         sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
+        //     }
+            
+        //     if (sizeOp1 != sizeOp2) {
+        //         ASSERT(false, "First operand dims for dim '"<< dim <<"', '"<<sizeOp1<<"' do not match with second '"<<sizeOp2<<"'");
+        //     }
+
+        //     dimSizes_.push_back(sizeOp2);
+        // }
     }
 
     TensorLayout layoutOp1 = operand(0)->layout();

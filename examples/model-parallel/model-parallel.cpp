@@ -17,10 +17,12 @@ void MM_AR_C()
 
     Stage layer = MatMul(in,w);
     Stage sum = AllReduce(Summation, layer);
-    Stage out = sum + b;//Dropout(sum, 0.5);
+    Stage sum2 = sum + b;
+    Stage out = Dropout(sum2, 0.5) + r;
     
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
 
+    pipeline.fuse({sum2, out});
     std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("model-parallel-mm-ar-c.cu", varBounds);
 }

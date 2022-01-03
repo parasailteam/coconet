@@ -457,7 +457,7 @@ class PointwiseOpCodegen : public AstVisitor
         TensorElemType explicitType_;
         bool useHalf2;
         CodeType codeType_;
-        std::stringstream declarations;
+        std::vector<std::string> declarations;
         bool genNumpyBroadcast;
 
     public:
@@ -470,7 +470,7 @@ class PointwiseOpCodegen : public AstVisitor
             node.accept(*this);
         }
 
-        std::string decls() {return declarations.str();}
+        std::vector<std::string> decls() {return declarations;}
 
         void setExplicitType(TensorElemType t) {
             explicitType_ = t;
@@ -621,18 +621,16 @@ class PointwiseOpCodegen : public AstVisitor
                 os_ << "]";
             }
         }
-        virtual void visit(DropoutImpl& node)
-        {
-            declarations << "curandState " << curandStateVar << ";" << std::endl;
-            declarations << "curand_init(0, 0, 0, &" << curandStateVar << ");" << std::endl;
-            os_ << "(curand_uniform(&" << curandStateVar << ") < " << node.prob() << ") ? ";
+        virtual void visit(DropoutImpl& node) {
+            declarations.push_back("curandState " + curandStateVar + ";\n");
+            declarations.push_back("curand_init(0, 0, 0, &" + curandStateVar + ");\n");
+            os_ << "(curand_uniform(&" << curandStateVar << ") < " << node.prob() << " ? ";
             visitChildren(node);
-            os_ << " : (" << elemTypeToCType(node.elemType()) << ") 0";
+            os_ << " : (" << elemTypeToCType(node.elemType()) << ") 0)";
         }
         virtual void visit(ScatterImpl& node) {
             visitChildren(node);
         }
-
         virtual void visit(IteImpl& node) {
             if (codeType_ == CodeType::CUDA && (explicitType_ == TensorElemType::Float16) && useHalf2) {
                 // For half2 implement ite with multiplication and addition
@@ -1219,7 +1217,8 @@ CFunc generateDropoutCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::sha
     binOpCodegen.print(*dropoutNode);
     
     //Add declarations
-    codeStream << indent(1) << binOpCodegen.decls() << std::endl;
+    for (auto decl : binOpCodegen.decls())
+        codeStream << indent(1) << decl;
 
     //Print assignment to output stage
     std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
@@ -1283,11 +1282,9 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     std::set<std::shared_ptr<StageImpl>> intermediates;
 
     std::set<std::shared_ptr<ExpressionImpl>> binOpInputs;
-    for (auto stage : pipeStage->stages()) {
-        auto inputs = stage->usedExprs();
-        binOpInputs.insert(inputs.begin(), inputs.end());
-    }
-    
+    auto liveinExprs = pipeStage->liveinExprs();
+    binOpInputs.insert(liveinExprs.begin(), liveinExprs.end());
+
     codeStream << "__global__ void " << binOpFuncName << "(";
 
     //Print arguments of CUDA Kernel
@@ -1341,18 +1338,12 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
     int ii = 0;
     for (auto iter : binOpInputs) {
-        if (iter->type() == StageNode && 
-            pipeStage->getStorageLocation(AstNodeImpl::asStageImpl(iter)) == Register) {
-            continue;
-        }
         arguments.insert(iter);
         codeStream << elemTypeToCType(iter->elemType()) << " ";
         if (iter->type() == TensorNode || iter->type() == StageNode)
             codeStream << "* ";
         codeStream << iter->name();
-        if (ii != binOpInputs.size() - 1)
-            codeStream << ", ";
-        ii++;
+        codeStream << ", ";
     }
 
     codeStream << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
@@ -1387,11 +1378,15 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
             auto stageDef = output->definition();
             if (stageDef->type() == UpdateNode)
                 stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
-            else {    
+            if (stageDef->type() == BinaryPointwiseOpNode) {    
                 std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
                 PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                             pipeStage, pipeline, false, false, CodeType::CUDA);
                 binOpCodegen.print(*binOpNode);
+
+                for (auto decl : binOpCodegen.decls())
+                    codeStream << indent(1) << decl;
+
                 //Print assignment to output stage
                 //If stored in a register then emit declaration
                 if (pipeStage->getStorageLocation(output) == Register) {
@@ -1431,13 +1426,17 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                 std::stringstream binopCodeStream;
                 auto output = outStages[it];
                 auto stageDef = output->definition();
-                if (stageDef->type() == UpdateNode) {
+                if (stageDef->type() == UpdateNode)
                     stageDef = AstNodeImpl::asUpdateImpl(stageDef)->update();
-                } else if (stageDef->type() == BinaryPointwiseOpNode) {    
+                
+                if (stageDef->type() == BinaryPointwiseOpNode) {    
                     std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
                     PointwiseOpCodegen binOpCodegen(binopCodeStream, 
                                                 pipeStage, pipeline, false, false, CodeType::CUDA);
                     binOpCodegen.print(*binOpNode);
+                    for (auto decl : binOpCodegen.decls())
+                        codeStream << indent(1) << decl;
+
                     //Print assignment to output stage
                     //If stored in a register then emit declaration
                     if (pipeStage->getStorageLocation(output) == Register) {
@@ -1479,8 +1478,8 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), arguments, true, BinaryPointwiseOpNode,
-    !normStages.empty(), intermediates});
+    return CFunc({binOpFuncName, codeStream.str(), arguments, 
+                 true, BinaryPointwiseOpNode, !normStages.empty(), intermediates});
 }
 
 std::string generateStageCompUsingMULTI(Pipeline& pipeline, std::shared_ptr<StageImpl> stage, std::shared_ptr<StageImpl> commCollStage, std::string funcName,
@@ -1828,7 +1827,7 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
             computationStages.push_back(stage);
     }
 
-    for (auto arg : pipelineStage->liveinExprs()) {
+    for (auto arg : pipelineStage->liveinStages()) {
         gpuKernelArgs.insert(arg);
     }
 
@@ -4225,7 +4224,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             }
         } else {
             //Traverse the internal pipeline stage DAG to generate overlapped and/or fused stages
-            if (pipeline_.name() == "model_parallel") {
+            if (false && pipeline_.name() == "model_parallel") {
                 std::shared_ptr<StageImpl> matmulStage = nullptr;
                 std::shared_ptr<StageImpl> rsStage = nullptr;
                 std::shared_ptr<StageImpl> agStage = nullptr;

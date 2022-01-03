@@ -288,7 +288,7 @@ public:
     virtual void accept(AstVisitor& v) = 0;
     virtual TensorLayout layout () {return layout_;}
     virtual size_t dims() {return dimSizes_.size();}
-    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return dimSizes_[dimSizes_.size() - 1 - dim];}
+    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return dimSizes_[dim];}
     virtual TensorElemType elemType() {return elemType_;}
     virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return dimSizes_;}
 
@@ -935,13 +935,12 @@ public:
     float prob(){return prob_;}
     std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
     std::string name() {return name_;}
+    std::shared_ptr<ExpressionImpl> size(int dim) {
+        return arg()->size(dim);
+    }
 
     virtual void setupAndCheckDimensions() {
         dimSizes_.clear();
-        for(size_t s = 0; s < arg()->dims(); s++) {
-            dimSizes_.push_back(arg()->size(s));
-        }
-        
         layout_ = arg()->layout();
         elemType_ = arg()->elemType();
     }
