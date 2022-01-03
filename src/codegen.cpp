@@ -240,106 +240,6 @@ std::string f16ToTypeConvCUDAFunc(TensorElemType t)
     }
 }
 
-std::string readFile(std::string filepath) 
-{
-    std::ifstream ifs(filepath.c_str(), std::ifstream::in);
-    if (!ifs.is_open()) {
-        ASSERT(false, "Cannot open file '"<<filepath <<"'");
-    }
-    std::ostringstream sstr;
-    sstr << ifs.rdbuf();
-    ifs.close();
-    return sstr.str();
-}
-
-void writeFile(std::string filepath, const std::string& contents) 
-{
-    std::ofstream file(filepath.c_str(), std::ofstream::out);
-    if (!file.is_open()) {
-        ASSERT(false, "Cannot open file '" << filepath << "'");
-    }
-
-    file.write(contents.c_str(), contents.size());
-    file.close();
-}
-
-void writeFile(int fd, const std::string& contents) 
-{
-    write(fd, contents.c_str(), contents.size());
-    close(fd);
-}
-
-std::string exec(const std::string& cmd) 
-{
-    std::array<char, 128> buffer;
-    std::string result;
-
-    auto pipe = popen(cmd.c_str(), "r"); // get rid of shared_ptr
-
-    if (!pipe) throw std::runtime_error("popen() failed!");
-
-    while (!feof(pipe)) {
-        if (fgets(buffer.data(), 128, pipe) != nullptr)
-            result += buffer.data();
-    }
-
-    auto rc = pclose(pipe);
-
-    if (rc == EXIT_SUCCESS) { // == 0
-
-    } else {  // EXIT_FAILURE is not used by all programs, maybe needs some adaptation.
-        std::cout << "executing '" << cmd << "' failed with " << rc << std::endl;
-        std::cout << "output " << result << std::endl;
-        ASSERT(false, "");
-    }
-    return result;
-}
-
-uint32_t nextPowerOf2(uint32_t v)
-{
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-
-    return v;
-}
-
-uint64_t nextPowerOf2(uint64_t v)
-{
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v |= v >> 32;
-    v++;
-
-    return v;
-}
-
-uint64_t isPowerOf2(uint64_t num) {
-    return ((num != 0) && ((num &(num - 1)) == 0));
-}
-
-uint64_t currOrNextPowerOf2(uint64_t num) {
-    if (isPowerOf2(num))
-        return num;
-    return nextPowerOf2(num);
-}
-
-void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::string replacement)
-{
-    std::regex e(regexSub);
-    std::string contents = readFile(filepath);
-    contents = std::regex_replace(contents, e, replacement);
-    writeFile(filepath, contents);
-}
-
 std::string printCudaOccupancyMaxActiveBlocksPerMultiprocessor(std::string blockspersm, std::string funcname, std::string threads, int shmem)
 {
     return "cudaOccupancyMaxActiveBlocksPerMultiprocessor((int*)&" + blockspersm + ", (void*)" + funcname + ", " + threads + ", " + std::to_string(shmem) + ")";
@@ -476,15 +376,6 @@ std::string printEventElapsedTime(std::string eventName1, std::string eventName2
       return "CUDACHECK(cudaEventElapsedTime(&" + timeVar + ", " + eventName1 + "," + eventName2 + "));";
 }
 
-static std::string indent(int level) 
-{
-    std::string s = "";
-    for (int i = 0; i < level; i++) {
-        s += "  ";
-    }
-    return s;
-}
-
 std::string iteratorForDim(size_t dim) 
 {
     return "i" + std::to_string(dim);
@@ -565,24 +456,15 @@ class PointwiseOpCodegen : public AstVisitor
         bool generateAsVars_;
         TensorElemType explicitType_;
         bool useHalf2;
-        std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts_;
         CodeType codeType_;
         std::stringstream declarations;
         bool genNumpyBroadcast;
 
     public:
         PointwiseOpCodegen(std::stringstream& os, PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
-                                 bool generateAsVars, CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : useHalf2(false), genNumpyBroadcast(false), explicitType_(None), os_(os),
+                                 bool generateAsVars, CodeType codeType) : useHalf2(false), genNumpyBroadcast(false), explicitType_(None), os_(os),
                                  pipeStage_(pipeStage), pipeline_(pipeline), generateCheck_(generateCheck), codeType_(codeType),
-                                 generateAsVars_(generateAsVars), mixedPrecisionCasts_(mixedPrecisionCasts) {}
-        PointwiseOpCodegen(std::stringstream& os, Pipeline& pipeline, bool generateCheck,
-                                 CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
-            os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
-            useHalf2(false), genNumpyBroadcast(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
-        PointwiseOpCodegen(std::stringstream& os, std::string iterator, Pipeline& pipeline, bool generateCheck, 
-                                 CodeType codeType, std::vector<std::shared_ptr<CastImpl>> mixedPrecisionCasts) : 
-            os_(os), pipeStage_(nullptr), pipeline_(pipeline), generateCheck_(generateCheck), 
-            useHalf2(false), genNumpyBroadcast(false), explicitType_(None), codeType_(codeType), mixedPrecisionCasts_(mixedPrecisionCasts) {}
+                                 generateAsVars_(generateAsVars) {}
 
         void print(ExpressionImpl& node) {
             node.accept(*this);
@@ -632,14 +514,14 @@ class PointwiseOpCodegen : public AstVisitor
             if (codeType_ == CodeType::CUDA && (explicitType_ == TensorElemType::Float16)) {
                 ASSERT(false, "To imlement numpy-broadcast.");
                 std::stringstream os0;
-                PointwiseOpCodegen codegen0(os0, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
+                PointwiseOpCodegen codegen0(os0, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_);
                 codegen0.setExplicitType(explicitType_);
                 if (useHalf2)
                     codegen0.setHalf2Type();
                 node.operand(0)->accept(codegen0);
 
                 std::stringstream os1;
-                PointwiseOpCodegen codegen1(os1, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_, mixedPrecisionCasts_);
+                PointwiseOpCodegen codegen1(os1, pipeStage_, pipeline_, generateCheck_, generateAsVars_, codeType_);
                 codegen1.setExplicitType(explicitType_);
                 if (useHalf2)
                     codegen1.setHalf2Type();
@@ -1026,7 +908,7 @@ std::string generateReduceTensorCodeCPU(Pipeline& pipeline, std::shared_ptr<Stag
     return codeStream.str();
 }
 
-std::string generateOpCodeCPU(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<ExpressionImpl> binOpNode, 
+std::string generateOpCodeCPU(Pipeline& pipeline, PipelineStage* pipeStage, std::shared_ptr<StageImpl> output, std::shared_ptr<ExpressionImpl> binOpNode, 
                                  bool generateCheck)
 {
     std::stringstream codeStream;
@@ -1069,7 +951,7 @@ std::string generateOpCodeCPU(Pipeline& pipeline, std::shared_ptr<StageImpl> out
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, true, CodeType::MPI, isMixedPrecision(binOpNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeStage, pipeline, true, false, CodeType::MPI);
     binOpCodegen.print(*binOpNode);
     
     std::string accessStr = "[" + iteratorAccessString(output) + "]" ;
@@ -1299,7 +1181,7 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
 }
 
 
-CFunc generateDropoutCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<DropoutImpl> dropoutNode)
+CFunc generateDropoutCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<DropoutImpl> dropoutNode)
 {
     std::stringstream codeStream;
     static int nameCounter = 0;
@@ -1344,7 +1226,7 @@ CFunc generateDropoutCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output,
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, false, CodeType::CUDA, isMixedPrecision(dropoutNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeStage, pipeline, false, false, CodeType::CUDA);
     binOpCodegen.print(*dropoutNode);
     
     //Add declarations
@@ -1361,7 +1243,7 @@ CFunc generateDropoutCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output,
     return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, DropoutNode});
 }
 
-CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
+CFunc generateBinOpCodeCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
 {
     std::stringstream codeStream;
     static int nameCounter = 0;
@@ -1406,7 +1288,7 @@ CFunc generateBinOpCodeCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> outpu
 
     //Print Binary operation
     std::stringstream binopCodeStream;
-    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeline, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+    PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeStage, pipeline, false, false, CodeType::CUDA);
     binOpCodegen.print(*binOpNode);
     
     //Print assignment to output stage
@@ -1539,7 +1421,7 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
             else {    
                 std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
                 PointwiseOpCodegen binOpCodegen(binopCodeStream, 
-                                            pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+                                            pipeStage, pipeline, false, false, CodeType::CUDA);
                 binOpCodegen.print(*binOpNode);
                 //Print assignment to output stage
                 //If stored in a register then emit declaration
@@ -1585,7 +1467,7 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
                 } else if (stageDef->type() == BinaryPointwiseOpNode) {    
                     std::shared_ptr<BinaryPointwiseOp> binOpNode = AstNodeImpl::asBinaryPointwiseOp(stageDef);
                     PointwiseOpCodegen binOpCodegen(binopCodeStream, 
-                                                pipeStage, pipeline, false, false, CodeType::CUDA, isMixedPrecision(binOpNode));
+                                                pipeStage, pipeline, false, false, CodeType::CUDA);
                     binOpCodegen.print(*binOpNode);
                     //Print assignment to output stage
                     //If stored in a register then emit declaration
@@ -1726,8 +1608,7 @@ std::string funcBodyForFusedBinOpCommCollCodeForNCCL(Pipeline& pipeline, Pipelin
     //to a larger bitwidth Stage then we consider that as a mixed precision.
     
     PointwiseOpCodegen binOpCodegen(binopCodeStream, 
-                                          pipeStage, pipeline, false, true, CodeType::CUDA, 
-                                          mixedPrecisionCasts);
+                                          pipeStage, pipeline, false, true, CodeType::CUDA);
     if (type == "half" || type == "half2") {
         binOpCodegen.setExplicitType(TensorElemType::Float16);
         if (type == "half2") binOpCodegen.setHalf2Type();
@@ -4317,7 +4198,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         break;
                     }
                     case BinaryPointwiseOpNode: {
-                        CFunc cfunc = generateBinOpCodeCUDA(pipeline_, outStage, AstNodeImpl::asBinaryPointwiseOp(stageDef));
+                        CFunc cfunc = generateBinOpCodeCUDA(pipelineStage, pipeline_, outStage, AstNodeImpl::asBinaryPointwiseOp(stageDef));
                         subFunctions.push_back(cfunc);
                         funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
                         pipelineStageName = cfunc.name;
@@ -4354,7 +4235,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         break;
                     }
                     case DropoutNode: {
-                        CFunc cfunc = generateDropoutCUDA(pipeline_, outStage, AstNodeImpl::asDropoutImpl(stageDef));
+                        CFunc cfunc = generateDropoutCUDA(pipelineStage, pipeline_, outStage, AstNodeImpl::asDropoutImpl(stageDef));
                         subFunctions.push_back(cfunc);
                         funcBody << genCUDAFuncCall(outStage, cfunc, streamArg, 1)<<";"<<std::endl;
                         pipelineStageName = cfunc.name;
@@ -4631,7 +4512,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                             case BinaryPointwiseOpNode:
                             case UnaryPointwiseOpNode:
                             case IteNode: {
-                                std::string c = generateOpCodeCPU(pipeline_, outStage, 
+                                std::string c = generateOpCodeCPU(pipeline_, pipelineStage, outStage, 
                                                                     stageDef,
                                                                     generateChecks);
                                 mpiRefFunc << c;

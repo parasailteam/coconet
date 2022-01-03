@@ -1,6 +1,14 @@
 #include "utils.hpp"
 #include "dsl.hpp"
 
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <string.h>
+#include <unistd.h>
+#include <regex>
+
 size_t sizeOfElemType(ACCCDSL::TensorElemType t)
 {
     switch (t) {
@@ -164,5 +172,114 @@ std::string replaceAllSubString(std::string& s, std::string subs, std::string re
         s = s.replace(s.find(subs), subs.size(), replacement);
     }
 
+    return s;
+}
+
+std::string readFile(std::string filepath) 
+{
+    std::ifstream ifs(filepath.c_str(), std::ifstream::in);
+    if (!ifs.is_open()) {
+        ASSERT(false, "Cannot open file '"<<filepath <<"'");
+    }
+    std::ostringstream sstr;
+    sstr << ifs.rdbuf();
+    ifs.close();
+    return sstr.str();
+}
+
+void writeFile(std::string filepath, const std::string& contents) 
+{
+    std::ofstream file(filepath.c_str(), std::ofstream::out);
+    if (!file.is_open()) {
+        ASSERT(false, "Cannot open file '" << filepath << "'");
+    }
+
+    file.write(contents.c_str(), contents.size());
+    file.close();
+}
+
+void writeFile(int fd, const std::string& contents) 
+{
+    write(fd, contents.c_str(), contents.size());
+    close(fd);
+}
+
+std::string exec(const std::string& cmd) 
+{
+    std::array<char, 128> buffer;
+    std::string result;
+
+    auto pipe = popen(cmd.c_str(), "r"); // get rid of shared_ptr
+
+    if (!pipe) throw std::runtime_error("popen() failed!");
+
+    while (!feof(pipe)) {
+        if (fgets(buffer.data(), 128, pipe) != nullptr)
+            result += buffer.data();
+    }
+
+    auto rc = pclose(pipe);
+
+    if (rc == EXIT_SUCCESS) { // == 0
+
+    } else {  // EXIT_FAILURE is not used by all programs, maybe needs some adaptation.
+        std::cout << "executing '" << cmd << "' failed with " << rc << std::endl;
+        std::cout << "output " << result << std::endl;
+        ASSERT(false, "");
+    }
+    return result;
+}
+
+uint32_t nextPowerOf2(uint32_t v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+
+    return v;
+}
+
+uint64_t nextPowerOf2(uint64_t v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+    v++;
+
+    return v;
+}
+
+uint64_t isPowerOf2(uint64_t num) {
+    return ((num != 0) && ((num &(num - 1)) == 0));
+}
+
+uint64_t currOrNextPowerOf2(uint64_t num) {
+    if (isPowerOf2(num))
+        return num;
+    return nextPowerOf2(num);
+}
+
+void replaceAllSubStringInFile(std::string filepath, std::string regexSub, std::string replacement)
+{
+    std::regex e(regexSub);
+    std::string contents = readFile(filepath);
+    contents = std::regex_replace(contents, e, replacement);
+    writeFile(filepath, contents);
+}
+
+std::string indent(int level) 
+{
+    std::string s = "";
+    for (int i = 0; i < level; i++) {
+        s += "  ";
+    }
     return s;
 }
