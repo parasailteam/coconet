@@ -24,6 +24,7 @@ const std::string cublasHandleVar = "cublasHandle";
 const std::string cublasHandleTy = "cublasHandle_t";
 const std::string threadIdxInGrid = "threadIdx.x + blockIdx.x * blockDim.x";
 const std::string curandStateVar = "curandState0";
+const std::string curandStateTy = "curandState";
 
 class NumElemGen : public AstVisitor
 {
@@ -138,7 +139,7 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim
     if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
         numElemStream << "DIVUP(";
 
-    if (numElemExpr->dimSizes().size() == 1) {
+    if (numElemExpr->dims() == 1) {
         NumElemGen numElemGen(numElemStream);
         numElemGen.print(*numElemExpr->dimSizes()[0].get());
     } else {
@@ -168,7 +169,7 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim
 
 std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr)
 {
-    return genNumElem(numElemExpr, 0, numElemExpr->dimSizes().size());
+    return genNumElem(numElemExpr, 0, numElemExpr->dims());
 }
 
 template<typename T>
@@ -459,12 +460,13 @@ class PointwiseOpCodegen : public AstVisitor
         CodeType codeType_;
         std::vector<std::string> declarations;
         bool genNumpyBroadcast;
+        bool genScatter;
 
     public:
         PointwiseOpCodegen(std::stringstream& os, PipelineStage* pipeStage, Pipeline& pipeline, bool generateCheck,
                                  bool generateAsVars, CodeType codeType) : useHalf2(false), genNumpyBroadcast(false), explicitType_(None), os_(os),
                                  pipeStage_(pipeStage), pipeline_(pipeline), generateCheck_(generateCheck), codeType_(codeType),
-                                 generateAsVars_(generateAsVars) {}
+                                 generateAsVars_(generateAsVars), genScatter(false) {}
 
         void print(ExpressionImpl& node) {
             node.accept(*this);
@@ -485,6 +487,10 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << ((generateCheck_ ? "__" : "") + node.name());
             if (!generateAsVars_) {
                 os_ << "[";
+                if (genScatter) {
+                    auto scatter = Scatter_(Tensor(shptr));
+                    os_ << genNumElem(scatter.impl()) << " * " << rankVar << " + ";
+                }
                 os_ << iteratorForDim(0);
                 if (genNumpyBroadcast)
                     os_ << "%" << genNumElem(shptr);
@@ -534,10 +540,14 @@ class PointwiseOpCodegen : public AstVisitor
                 if (node.operand(0)->dims() < node.operand(1)->dims())
                     genNumpyBroadcast = true;
                 node.operand(0)->accept(*this);
+                if (node.operand(0)->dims() < node.operand(1)->dims())
+                    genNumpyBroadcast = false;
                 os_ << " " << BinaryPointwiseOp::operatorToStr(node.op()) << " ";
                 if (node.operand(1)->dims() < node.operand(0)->dims())
                     genNumpyBroadcast = true;
                 node.operand(1)->accept(*this);
+                if (node.operand(1)->dims() < node.operand(0)->dims())
+                    genNumpyBroadcast = false;
             }
             os_ << ")";
         }
@@ -629,7 +639,9 @@ class PointwiseOpCodegen : public AstVisitor
             os_ << " : (" << elemTypeToCType(node.elemType()) << ") 0)";
         }
         virtual void visit(ScatterImpl& node) {
+            genScatter = true;
             visitChildren(node);
+            genScatter = false;
         }
         virtual void visit(IteImpl& node) {
             if (codeType_ == CodeType::CUDA && (explicitType_ == TensorElemType::Float16) && useHalf2) {
@@ -1123,7 +1135,7 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
     return CFunc({funcName, codeStream.str(), inputs, true, MatMulNode});
 }
 
-std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std::set<std::shared_ptr<ExpressionImpl>>& inputArgs)
+std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std::set<std::shared_ptr<ExpressionImpl>>& inputArgs, std::string extraArgs = "")
 {
     std::stringstream codeStream;
 
@@ -1148,7 +1160,7 @@ std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std
         ii++;
     }
 
-
+    codeStream << extraArgs << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
     codeStream << ") {" << std::endl;
 
     return codeStream.str();
@@ -1200,7 +1212,6 @@ CFunc generateDropoutCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::sha
     std::set<std::shared_ptr<ExpressionImpl>> binOpInputs = dropoutNode->usedExprs();
 
     binOpInputs.insert(output);
-
     codeStream << generateCUDAKernelDecl(pipeline, funcName, binOpInputs);
 
     //Function body
@@ -1242,6 +1253,7 @@ CFunc generateBinOpCodeCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::s
     //Add output to arguments too.
     binOpInputs.insert(output);
 
+    //TODO: If the expression contains a Norm or Dropout then add arguments for it.
     codeStream << generateCUDAKernelDecl(pipeline, binOpFuncName, binOpInputs);
 
     //Function body
@@ -1257,6 +1269,10 @@ CFunc generateBinOpCodeCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::s
     PointwiseOpCodegen binOpCodegen(binopCodeStream, pipeStage, pipeline, false, false, CodeType::CUDA);
     binOpCodegen.print(*binOpNode);
     
+    //Add declarations
+    for (auto decl : binOpCodegen.decls())
+        codeStream << indent(1) << decl;
+
     //Print assignment to output stage
     std::string name = pipeline.explicitStoreLocations().count(output) == 0 ? output->name() : pipeline.explicitStoreLocations().at(output)->name();
     codeStream << indent(1) << name;

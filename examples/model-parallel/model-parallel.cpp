@@ -40,11 +40,13 @@ void MM_RS_C_AG()
 
     Stage layer = MatMul(in,w);
     Stage sumRS = ReduceScatter(Summation, layer);
-    Stage scOut = sumRS + Scatter(r);
+    Stage sum2 = sumRS + b;
+    Stage scOut = Dropout(sum2, 0.5) + Scatter(r);
     Stage out = AllGather(scOut);
 
     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
     
+    pipeline.fuse({sum2, scOut});
     std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("model-parallel-mm-rs-c-ag.cu", varBounds);
 }

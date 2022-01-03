@@ -710,6 +710,7 @@ public:
     };
 
     virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return arg()->size(dim);};
+    virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return arg()->dimSizes();} 
     virtual void setupAndCheckDimensions() 
     {
         //std::cout << typeid(*arg().get()).name() << std::endl;
@@ -935,9 +936,9 @@ public:
     float prob(){return prob_;}
     std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
     std::string name() {return name_;}
-    std::shared_ptr<ExpressionImpl> size(int dim) {
-        return arg()->size(dim);
-    }
+    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return arg()->size(dim);}
+    virtual size_t dims() {return arg()->dims();}
+    virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return dimSizes_;}
 
     virtual void setupAndCheckDimensions() {
         dimSizes_.clear();
