@@ -833,6 +833,7 @@ std::vector<std::shared_ptr<CastImpl>> isMixedPrecision(std::shared_ptr<Expressi
     return typeConvs;
 }
 
+/**Non-Fused Operator CUDA Code */
 std::string generateReduceTensorCodeCPU(Pipeline& pipeline, std::shared_ptr<StageImpl> output, ReduceTensorImpl* reduceTensor, 
                                         bool generateCheck)
 {
@@ -1124,13 +1125,42 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
     return CFunc({funcName, codeStream.str(), inputs, true, MatMulNode});
 }
 
+std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std::set<std::shared_ptr<ExpressionImpl>>& inputArgs)
+{
+    std::stringstream codeStream;
+
+    codeStream << "__global__ void " << funcName << "(";
+
+    for (auto it : pipeline.explicitStoreLocations()) {
+        inputArgs.erase(it.first);
+        inputArgs.insert(it.second);
+    }
+    
+    auto dimExprs = allDimExprs(inputArgs.begin(), inputArgs.end());
+    inputArgs.insert(dimExprs.begin(), dimExprs.end());
+    
+    int ii = 0;
+    for (auto iter : inputArgs) {
+        codeStream << elemTypeToCType(iter->elemType()) << " ";
+        if (iter->type() == TensorNode || iter->type() == StageNode)
+            codeStream << "* ";
+        codeStream << iter->name();
+        if (ii != inputArgs.size() - 1)
+            codeStream << ", ";
+        ii++;
+    }
+
+
+    codeStream << ") {" << std::endl;
+
+    return codeStream.str();
+}
+
 CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<NormImpl> reduceTensor)
 {
     std::stringstream codeStream;
     static int nameCounter = 0;
-    std::string funcName = "redOpFunc" + std::to_string(nameCounter++);    
-
-    codeStream << "__global__ void " << funcName << "(";
+    std::string funcName = "normFunc" + std::to_string(nameCounter++);    
 
     //Print arguments of CUDA Kernel
     //Add output to arguments too.
@@ -1138,24 +1168,7 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
     redOpInputs.insert(reduceTensor->arg());
     redOpInputs.insert(output);
 
-    for (auto it : pipeline.explicitStoreLocations()) {
-        redOpInputs.erase(it.first);
-        redOpInputs.insert(it.second);
-    }
-
-    int ii = 0;
-    for (auto iter : redOpInputs) {
-        codeStream << elemTypeToCType(iter->elemType()) << " ";
-        if (iter->type() == TensorNode || iter->type() == StageNode)
-            codeStream << "* ";
-        codeStream << iter->name();
-        if (ii != redOpInputs.size() - 1)
-            codeStream << ", ";
-        ii++;
-    }
-
-
-    codeStream << ") {" << std::endl;
+    codeStream << generateCUDAKernelDecl(pipeline, funcName, redOpInputs);
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
@@ -1180,41 +1193,17 @@ CFunc generateNormCUDA(Pipeline& pipeline, std::shared_ptr<StageImpl> output, st
     return CFunc({funcName, codeStream.str(), redOpInputs, true, NormNode});
 }
 
-
 CFunc generateDropoutCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<DropoutImpl> dropoutNode)
 {
     std::stringstream codeStream;
     static int nameCounter = 0;
-    std::string binOpFuncName = "dropout" + std::to_string(nameCounter++);
+    std::string funcName = "dropout" + std::to_string(nameCounter++);
 
     std::set<std::shared_ptr<ExpressionImpl>> binOpInputs = dropoutNode->usedExprs();
 
-    codeStream << "__global__ void " << binOpFuncName << "(";
-
-    //Print arguments of CUDA Kernel
-    //Add output to arguments too.
     binOpInputs.insert(output);
 
-    for (auto it : pipeline.explicitStoreLocations()) {
-        binOpInputs.erase(it.first);
-        binOpInputs.insert(it.second);
-    }
-    auto dimExprs = allDimExprs(binOpInputs.begin(), binOpInputs.end());
-    binOpInputs.insert(dimExprs.begin(), dimExprs.end());
-    
-    int ii = 0;
-    for (auto iter : binOpInputs) {
-        codeStream << elemTypeToCType(iter->elemType()) << " ";
-        if (iter->type() == TensorNode || iter->type() == StageNode)
-            codeStream << "* ";
-        codeStream << iter->name();
-        if (ii != binOpInputs.size() - 1)
-            codeStream << ", ";
-        ii++;
-    }
-
-    codeStream << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
-    codeStream << ") {" << std::endl;
+    codeStream << generateCUDAKernelDecl(pipeline, funcName, binOpInputs);
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
@@ -1240,7 +1229,7 @@ CFunc generateDropoutCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::sha
 
     codeStream << "}";
 
-    return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, DropoutNode});
+    return CFunc({funcName, codeStream.str(), binOpInputs, true, DropoutNode});
 }
 
 CFunc generateBinOpCodeCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::shared_ptr<StageImpl> output, std::shared_ptr<BinaryPointwiseOp> binOpNode)
@@ -1250,33 +1239,11 @@ CFunc generateBinOpCodeCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::s
     std::string binOpFuncName = "binOpFunc" + std::to_string(nameCounter++);
 
     std::set<std::shared_ptr<ExpressionImpl>> binOpInputs = binOpNode->usedExprs();
-
-    codeStream << "__global__ void " << binOpFuncName << "(";
-
     //Print arguments of CUDA Kernel
     //Add output to arguments too.
     binOpInputs.insert(output);
 
-    for (auto it : pipeline.explicitStoreLocations()) {
-        binOpInputs.erase(it.first);
-        binOpInputs.insert(it.second);
-    }
-    auto dimExprs = allDimExprs(binOpInputs.begin(), binOpInputs.end());
-    binOpInputs.insert(dimExprs.begin(), dimExprs.end());
-    
-    int ii = 0;
-    for (auto iter : binOpInputs) {
-        codeStream << elemTypeToCType(iter->elemType()) << " ";
-        if (iter->type() == TensorNode || iter->type() == StageNode)
-            codeStream << "* ";
-        codeStream << iter->name();
-        if (ii != binOpInputs.size() - 1)
-            codeStream << ", ";
-        ii++;
-    }
-
-    codeStream << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
-    codeStream << ") {" << std::endl;
+    codeStream << generateCUDAKernelDecl(pipeline, binOpFuncName, binOpInputs);
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
@@ -1301,6 +1268,8 @@ CFunc generateBinOpCodeCUDA(PipelineStage* pipeStage, Pipeline& pipeline, std::s
 
     return CFunc({binOpFuncName, codeStream.str(), binOpInputs, true, BinaryPointwiseOpNode});
 }
+
+/*************************/
 
 CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 {
