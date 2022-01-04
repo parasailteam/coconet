@@ -81,9 +81,9 @@ Restart the shell and activate the Anaconda environment by
 source /path/to/conda/bin/activate 
 ```
 This activation is needed after every login to shell.
-Anaconda installs mpich but we need to remove it and any C/C++ compilers.
+Anaconda installs mpich but we need to remove it.
 ```
-conda remove mpich openmpi* c-compiler compilers cxx-compiler
+conda remove mpich 
 ```
 Install matplotlib by
 ```
