@@ -50,7 +50,7 @@ pipeline.codegen("sgd-ar-c.cu");
 
 Execute following commands to install dependencies.
 ```
-sudo apt update && sudo apt install gcc linux-headers-$(uname -r) make g++ git python3-dev wget unzip python3-pip cmake openmpi* libopenmpi*
+sudo apt update && sudo apt install gcc linux-headers-$(uname -r) make g++ git python3-dev wget unzip python3-pip cmake openmpi* libopenmpi* *glog*
 ```
 
 <b>Install CUDA</b>: In our experiments we used CUDA 11.3 on Ubuntu 20.04. We cannot use CUDA 11.5 because currently PyTorch only supports upto 11.3. CUDA 11.3 toolkit can be downloaded from https://developer.nvidia.com/cuda-11.3.0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=20.04&target_type=runfile_local
