@@ -4386,7 +4386,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         os_ << "float& " << iter.second.second << ", ";
     }
     //NCCLComm and CUDA Stream arguments
-    os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg << ")";
+    os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg;
 
     if (useCUBLAS)
         os_ << ", " << cublasHandleTy << " " << cublasHandleVar;
