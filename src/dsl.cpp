@@ -128,6 +128,7 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
         PROCESS_VAL(ScatterNode)
         PROCESS_VAL(IteNode)
         PROCESS_VAL(UpdateNode)
+        PROCESS_VAL(SendNode);
         
         default:
             ASSERT(false, "Undefined AstNodeType " << t);
@@ -139,6 +140,11 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
 Variable ACCCDSL::RANK(Int32, "rank");
 Variable ACCCDSL::WORLD(Int32, "world");
 Variable ACCCDSL::GROUP(Int32, "group");
+
+SingleDimExpression ACCCDSL::NextGroupRank(SingleDimExpression group, SingleDimExpression rank)
+{
+    return group + rank;
+}
 
 CollCommOperation<AllReduce_> ACCCDSL::AllReduce(AllReduceOp);
 CollCommOperation<AllGather_> ACCCDSL::AllGather(AllGatherOp);

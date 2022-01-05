@@ -1443,13 +1443,13 @@ public:
 
 class SendImpl : public CommCollPrimitiveImpl {
 public:
-    SendImpl(std::shared_ptr<TensorImpl> t, std::shared_ptr<VariableImpl> dst) : 
+    SendImpl(std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst) : 
         CommCollPrimitiveImpl(AstNodeType::SendNode, t, dst)
     {
         setupAndCheckDimensions();
     }
     
-    SendImpl(std::shared_ptr<StageImpl> s, std::shared_ptr<VariableImpl> dst) : 
+    SendImpl(std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst) : 
         CommCollPrimitiveImpl(AstNodeType::SendNode, s, dst)
     {
         setupAndCheckDimensions();
@@ -1458,23 +1458,18 @@ public:
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
     }
-    std::shared_ptr<ExpressionImpl> dst() {return AstNodeImpl::asExpressionImpl(children_[0]);}
+    std::shared_ptr<ExpressionImpl> dst() {return AstNodeImpl::asExpressionImpl(children_[1]);}
     std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
     virtual size_t dims() {return arg()->dims();};
     virtual TensorElemType elemType(){return arg()->elemType();}
     virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return arg()->dimSizes();}
+    virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return arg()->size(dim);}
     virtual void setupAndCheckDimensions() {
-        dimSizes_.clear();        
+        dimSizes_.clear();
         elemType_ = arg()->elemType();
         layout_ = arg()->layout();
     }
 };
-
-
-// std::shared_ptr<ExpressionImpl> operator-(std::shared_ptr<ExpressionImpl> x, std::shared_ptr<ExpressionImpl> y) 
-// {
-//     return std::shared_ptr<BinaryPointwiseOp> (new BinaryPointwiseOp(BinaryOp::Subtract, x, y));
-// }
 }
 
 #endif

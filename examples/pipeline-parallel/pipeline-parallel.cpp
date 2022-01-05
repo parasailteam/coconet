@@ -16,7 +16,7 @@ void AR_P2P_C()
     Tensor r(Float16, {B,S,H}, Replicated, "r");
     
     Stage sum = AllReduce(Summation, in);
-    Stage recv = Send(sum, B);
+    Stage recv = Send(sum, NextGroupRank(GROUP, RANK));
     Stage out = Dropout(recv+b, 0.1) + r;
 
     Pipeline transformer({in}, {out});

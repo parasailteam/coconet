@@ -7,6 +7,8 @@ namespace ACCCDSL {
 extern Variable RANK;
 extern Variable WORLD;
 extern Variable GROUP;
+
+SingleDimExpression NextGroupRank(SingleDimExpression group, SingleDimExpression rank);
 }
 
 #endif

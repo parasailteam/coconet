@@ -381,10 +381,10 @@ public:
 
 class Send_ : public ContinuousExpression {
 public:
-    Send_(Tensor& t, Variable dest) : 
+    Send_(Tensor& t, SingleDimExpression dest) : 
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::SendImpl>(new ACCCDSLImpl::SendImpl(t.impl(), dest.impl()))) {}
     
-    Send_(Stage& s, Variable dest) : 
+    Send_(Stage& s, SingleDimExpression dest) : 
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::SendImpl>(new ACCCDSLImpl::SendImpl(s.impl(), dest.impl()))) {}
 };
 
@@ -432,11 +432,11 @@ public:
         return T(s);
     }
 
-    T operator()(Tensor& t, Variable dst) {
+    T operator()(Tensor& t, SingleDimExpression dst) {
         return T(t, dst);
     }
 
-    T operator()(Stage& s, Variable dst) {
+    T operator()(Stage& s, SingleDimExpression dst) {
         return T(s, dst);
     }
 };

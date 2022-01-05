@@ -4197,6 +4197,27 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         pipelineStageName = "Broadcast";
                         break;
                     }
+                    case SendNode: {
+                        std::string dst;
+                        std::shared_ptr<SendImpl> send = AstNodeImpl::asSendImpl(stageDef);
+                        
+                        std::stringstream binopCodeStream;
+                        PointwiseOpCodegen binOpCodegen(binopCodeStream, pipelineStage, pipeline_, false, false, CodeType::CUDA);
+                        binOpCodegen.print(*send->dst());
+                        dst = binopCodeStream.str();
+                        
+                        std::stringstream ncclSendRecvCall;
+                        ncclSendRecvCall << "(" << send->arg()->name() << ", " << stageName << ", " << 
+                            genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
+                            ", " << dst << ", " << commArg << ", " << streamArg << ")";
+
+                        funcBody << indent(1) << "if (0 <= " << dst << " && " << dst <<" < " << WORLD.impl()->name() << ") {" << std::endl;
+                        funcBody << indent(2) << "ncclSend" << ncclSendRecvCall.str() << ";" << std::endl;
+                        funcBody << indent(2) << "ncclRecv" << ncclSendRecvCall.str() << ";" << std::endl;
+                        funcBody << indent(1) << "}" << std::endl;
+                        pipelineStageName = "Send";
+                        break;
+                    }
                     case BinaryPointwiseOpNode: {
                         CFunc cfunc = generateBinOpCodeCUDA(pipelineStage, pipeline_, outStage, AstNodeImpl::asBinaryPointwiseOp(stageDef));
                         subFunctions.push_back(cfunc);
