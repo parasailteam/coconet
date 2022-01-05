@@ -163,7 +163,7 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim
     }
     
     if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
-        numElemStream << ", comm_size)";
+        numElemStream << ", " << WORLD.impl()->name() << ")";
 
     return numElemStream.str();
 }
@@ -273,7 +273,7 @@ std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg, bool x=false)
     const std::string cudaMalloc = "cudaMalloc";
     std::stringstream code;
 
-    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*comm_size":"")<< " * sizeof(" << 
+    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*" + WORLD.impl()->name() :"")<< " * sizeof(" << 
         elemTypeToCType(arg->elemType()) << "))";
     
     return cudaCheck(code.str());
