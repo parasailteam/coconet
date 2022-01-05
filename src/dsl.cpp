@@ -1,4 +1,5 @@
 #include <dsl.hpp>
+#include <keywords.hpp>
 
 using namespace ACCCDSL;
 
@@ -135,11 +136,16 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
     return "";
 }
 
+Variable ACCCDSL::RANK(Int32, "rank");
+Variable ACCCDSL::WORLD(Int32, "world");
+Variable ACCCDSL::GROUP(Int32, "group");
+
 CollCommOperation<AllReduce_> ACCCDSL::AllReduce(AllReduceOp);
 CollCommOperation<AllGather_> ACCCDSL::AllGather(AllGatherOp);
 CollCommOperation<ReduceScatter_> ACCCDSL::ReduceScatter(ReduceScatterOp);
 CollCommOperation<Broadcast_> ACCCDSL::Broadcast(BroadcastOp);
 CollCommOperation<Scatter_> ACCCDSL::Scatter(ScatterOp);
+CollCommOperation<Send_> ACCCDSL::Send(SendOp);
 
 template<typename T>
 Const<T> valToConstNode(T v) {

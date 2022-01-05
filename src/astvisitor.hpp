@@ -54,6 +54,20 @@ public:
         }
         addToMap(node, a);
     }
+    virtual void visit(SendImpl& node)
+    {
+        checkMap
+        auto x = AstNodeImpl::asExpressionImpl(clone(node.arg()));
+        auto y = AstNodeImpl::asVariableImpl(clone(node.dst()));
+
+        SendImpl* a;
+         if (x->type() == TensorNode) {
+            a = new SendImpl(AstNodeImpl::asTensorImpl(x), y);
+        } else {
+            a = new SendImpl(AstNodeImpl::asStageImpl(x), y);
+        }
+        addToMap(node, a);
+    }
     virtual void visit(ReduceImpl& node)
     {
         ASSERT(false, "to implement");
@@ -272,6 +286,10 @@ class VisitChildrenVisitor : public AstVisitor {
     {
         visitChildren(node);
     }
+    virtual void visit(SendImpl& node) 
+    {
+        visitChildren(node);
+    }
     virtual void visit(BinaryPointwiseOp& node) {
         node.operand(0)->accept(*this);
         node.operand(1)->accept(*this);
@@ -358,6 +376,9 @@ public:
         visitChildren(node);
     }
     virtual void visit(ReduceScatterImpl& node) {
+        visitChildren(node);
+    }
+    virtual void visit(SendImpl& node) {
         visitChildren(node);
     }
     virtual void visit(NormImpl& node) {
@@ -455,6 +476,13 @@ public:
     {
         os_ << "reduce-scatter"<<"(";
         visitChildren(node);
+        os_ << ")";
+    }
+    virtual void visit(SendImpl& node) {
+        os_ << "send(";
+        node.arg()->accept(*this);
+        os_ << ", ";
+        node.dst()->accept(*this);
         os_ << ")";
     }
     void visit(BinaryPointwiseOp& node) {

@@ -61,6 +61,7 @@ enum AstNodeType {
     BroadcastNode,
     AllGatherNode,
     ReduceTensorNode,
+    SendNode,
     NormNode,
     ReduceScatterNode,
     FusedAllReduceNone,
@@ -121,6 +122,7 @@ class CommCollPrimitiveImpl;
 class ExpressionImpl;
 class PowerImpl;
 class ReduceTensorImpl;
+class SendImpl;
 class StageImpl;
 class UpdateImpl;
 class NormImpl;
@@ -210,6 +212,7 @@ public:
     asChild(IteImpl);
     asChild(NormImpl);
     asChild(DropoutImpl);
+    asChild(SendImpl);
 };
 
 class AstVisitor {
@@ -227,6 +230,7 @@ public:
     virtual void visit(UnaryPointwiseOp& node) = 0;
     virtual void visit(PowerImpl& node) = 0;
     virtual void visit(ReduceTensorImpl& node) = 0;
+    virtual void visit(SendImpl& node) = 0;
     virtual void visit(NormImpl& node) = 0;
     virtual void visit(DropoutImpl& node) = 0;
     virtual void visit(StageImpl& node) = 0;
@@ -1171,10 +1175,15 @@ class CommCollPrimitiveImpl : public ExpressionImpl {
 protected:
 
 public:
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, bool scattered) :
-        ExpressionImpl(n, scattered, t) {}
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, bool scattered) :
-        ExpressionImpl(n, scattered, s) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t) :
+        ExpressionImpl(n, false, t) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s) :
+        ExpressionImpl(n, false, s) {}
+
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst) :
+        ExpressionImpl(n, false, t, dst) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst) :
+        ExpressionImpl(n, false, s, dst) {}
 };
 
 /*Collective Communications*/
@@ -1184,12 +1193,12 @@ protected:
 public:
     //All Reduce will not work on scattered expressions
     AllReduceImpl(std::shared_ptr<TensorImpl> t, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, t, false), op_(op) {
+        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, t), op_(op) {
             setupAndCheckDimensions();
         }
     
     AllReduceImpl(std::shared_ptr<StageImpl> s, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, s, false), op_(op) {setupAndCheckDimensions();}
+        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, s), op_(op) {setupAndCheckDimensions();}
 
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
@@ -1244,7 +1253,7 @@ class BroadcastImpl : public CommCollPrimitiveImpl {
 public:
     //Broadcast will not work on scattered expressions
     BroadcastImpl(std::shared_ptr<TensorImpl> t, std::vector<int> gpus) : 
-        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, t, false)
+        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, t)
     {
         /*Tensor should be stored on only one GPU, which is the root*/
         // ASSERT(t->numGPUs() == 1, "Broadcast can only broadcast a tensor stored on only one gpu. Input tensor is stored on " << t->numGPUs() << " gpus");
@@ -1258,7 +1267,7 @@ public:
     }
     
     BroadcastImpl(std::shared_ptr<StageImpl> s, std::vector<int> gpus) : 
-        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, s, false)
+        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, s)
     {
         setupAndCheckDimensions();
         layout_ = Replicated;    
@@ -1298,7 +1307,7 @@ protected:
 public:
     //Reduce will never work on scattered expressions
     ReduceImpl(std::shared_ptr<TensorImpl> t, int root) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceNode, t, false),
+        CommCollPrimitiveImpl(AstNodeType::ReduceNode, t),
         root_(root) {
         /*Only one gpu stores result of reduce*/
         setupAndCheckDimensions();
@@ -1306,7 +1315,7 @@ public:
     }
     
     ReduceImpl(std::shared_ptr<StageImpl> s, int root) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceNode, s, false) {
+        CommCollPrimitiveImpl(AstNodeType::ReduceNode, s) {
         /*Only one gpu stores result of reduce*/
         layout_ = Local;
         setupAndCheckDimensions();
@@ -1351,13 +1360,13 @@ public:
 class AllGatherImpl : public CommCollPrimitiveImpl {
 public:
     AllGatherImpl(std::shared_ptr<TensorImpl> t) : 
-        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, t, false)
+        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, t)
     {
         setupAndCheckDimensions();
     }
     
     AllGatherImpl(std::shared_ptr<StageImpl> s) : 
-        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, s, false)
+        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, s)
     {
         setupAndCheckDimensions();
     }
@@ -1395,14 +1404,14 @@ protected:
 public:
     //ReduceScatter returns a scattered expressions
     ReduceScatterImpl(std::shared_ptr<TensorImpl> t, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, t, true), op_(op)
+        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, t), op_(op)
     {
         setupAndCheckDimensions();
         elemType_ = t->elemType();
     }
     
     ReduceScatterImpl(std::shared_ptr<StageImpl> s, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, s, true), op_(op)
+        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, s), op_(op)
     {
         setupAndCheckDimensions();
         elemType_ = s->elemType();
@@ -1431,6 +1440,36 @@ public:
         layout_ = Sliced;
     }
 };
+
+class SendImpl : public CommCollPrimitiveImpl {
+public:
+    SendImpl(std::shared_ptr<TensorImpl> t, std::shared_ptr<VariableImpl> dst) : 
+        CommCollPrimitiveImpl(AstNodeType::SendNode, t, dst)
+    {
+        setupAndCheckDimensions();
+    }
+    
+    SendImpl(std::shared_ptr<StageImpl> s, std::shared_ptr<VariableImpl> dst) : 
+        CommCollPrimitiveImpl(AstNodeType::SendNode, s, dst)
+    {
+        setupAndCheckDimensions();
+    }
+
+    virtual void accept(AstVisitor& v) {
+        v.visit(*this);
+    }
+    std::shared_ptr<ExpressionImpl> dst() {return AstNodeImpl::asExpressionImpl(children_[0]);}
+    std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
+    virtual size_t dims() {return arg()->dims();};
+    virtual TensorElemType elemType(){return arg()->elemType();}
+    virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return arg()->dimSizes();}
+    virtual void setupAndCheckDimensions() {
+        dimSizes_.clear();        
+        elemType_ = arg()->elemType();
+        layout_ = arg()->layout();
+    }
+};
+
 
 // std::shared_ptr<ExpressionImpl> operator-(std::shared_ptr<ExpressionImpl> x, std::shared_ptr<ExpressionImpl> y) 
 // {

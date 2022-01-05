@@ -370,14 +370,24 @@ public:
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::ScatterImpl>(new ACCCDSLImpl::ScatterImpl(std::dynamic_pointer_cast<ACCCDSLImpl::StageImpl>(s.impl())))) {}
 };
 
-class Broadcast_ : public Expression {
+class Broadcast_ : public ContinuousExpression {
 public:
     Broadcast_(Tensor& t, int NumGPUs) : 
-        Expression(std::shared_ptr<ACCCDSLImpl::BroadcastImpl>(new ACCCDSLImpl::BroadcastImpl(std::dynamic_pointer_cast<ACCCDSLImpl::TensorImpl>(t.impl()), NumGPUs))) {}
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::BroadcastImpl>(new ACCCDSLImpl::BroadcastImpl(std::dynamic_pointer_cast<ACCCDSLImpl::TensorImpl>(t.impl()), NumGPUs))) {}
     
     Broadcast_(Stage& s, int NumGPUs) : 
-        Expression(std::shared_ptr<ACCCDSLImpl::BroadcastImpl>(new ACCCDSLImpl::BroadcastImpl(std::dynamic_pointer_cast<ACCCDSLImpl::StageImpl>(s.impl()), NumGPUs))) {}
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::BroadcastImpl>(new ACCCDSLImpl::BroadcastImpl(std::dynamic_pointer_cast<ACCCDSLImpl::StageImpl>(s.impl()), NumGPUs))) {}
 };
+
+class Send_ : public ContinuousExpression {
+public:
+    Send_(Tensor& t, Variable dest) : 
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::SendImpl>(new ACCCDSLImpl::SendImpl(t.impl(), dest.impl()))) {}
+    
+    Send_(Stage& s, Variable dest) : 
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::SendImpl>(new ACCCDSLImpl::SendImpl(s.impl(), dest.impl()))) {}
+};
+
 // class Reduce_ : public Expression {
 // public:
 //     Reduce_(ReduceOperation op, Tensor& t) : 
@@ -395,6 +405,7 @@ enum CollCommOperationType {
     ReduceScatterOp,
     BroadcastOp,
     ScatterOp,
+    SendOp
 };
 
 template<class T>
@@ -420,6 +431,14 @@ public:
     T operator()(Stage& s) {
         return T(s);
     }
+
+    T operator()(Tensor& t, Variable dst) {
+        return T(t, dst);
+    }
+
+    T operator()(Stage& s, Variable dst) {
+        return T(s, dst);
+    }
 };
 
 extern CollCommOperation<AllReduce_> AllReduce;
@@ -427,6 +446,7 @@ extern CollCommOperation<AllGather_> AllGather;
 extern CollCommOperation<ReduceScatter_> ReduceScatter;
 extern CollCommOperation<Broadcast_> Broadcast;
 extern CollCommOperation<Scatter_> Scatter;
+extern CollCommOperation<Send_> Send;
 
 //TODO: Supporting Fused Communication Collectives is not a priority right now
 class FusedAllReduce_ : public ContinuousExpression {
@@ -486,5 +506,7 @@ ContinuousExpression Ite(ContinuousExpression cond, ContinuousExpression ifTrue,
 ContinuousExpression Ite(SingleDimExpression cond, ContinuousExpression ifTrue, float ifFalse);
 
 }
+
+#include "keywords.hpp"
 
 #endif

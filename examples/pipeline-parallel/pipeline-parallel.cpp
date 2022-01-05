@@ -12,12 +12,14 @@ void AR_P2P_C()
 
     Tensor w(Float16, {H,H}, Sliced, "w");
     Tensor b(Float16, H, Replicated, "b");
-    Tensor in(Float16, {B,S,H}, Sliced_2, "in");
+    Tensor in(Float16, {B,S,H}, Local, "in");
     Tensor r(Float16, {B,S,H}, Replicated, "r");
+    
+    Stage sum = AllReduce(Summation, in);
+    Stage recv = Send(sum, B);
+    Stage out = Dropout(recv+b, 0.1) + r;
 
-    Stage layer = MatMul(in,w);
-    Stage sum = AllReduce(Summation, layer);
-    Stage out = sum + r;
+    Pipeline transformer({in}, {out});
     
     Pipeline pipeline("pipeline-parallel", {w,b,in,r}, {out});
 

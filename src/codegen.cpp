@@ -2,6 +2,7 @@
 #include "pipeline.hpp"
 #include "astvisitor.hpp"
 #include "utils.hpp"
+#include "keywords.hpp"
 
 #include <sstream>
 #include <iostream>
@@ -13,13 +14,10 @@
 #include <regex>
 
 using namespace ACCCDSLImpl;
+using namespace ACCCDSL;
 
 //Declaration and names of common variables
-const std::string rankVar = "rank";
-const std::string rankVarTy = "int";
-const std::string rankString = "rank";
-const std::string commSizeArg = "comm_size";
-const std::string commSizeTy = "int";
+const std::string dummyArg = "bool dummy = false";
 const std::string cublasHandleVar = "cublasHandle";
 const std::string cublasHandleTy = "cublasHandle_t";
 const std::string threadIdxInGrid = "threadIdx.x + blockIdx.x * blockDim.x";
@@ -53,6 +51,9 @@ class NumElemGen : public AstVisitor
         }
 
         virtual void visit(AllGatherImpl& node) 
+        {
+        }
+        virtual void visit(SendImpl& node) 
         {
         }
         virtual void visit(ReduceScatterImpl& node) 
@@ -489,7 +490,7 @@ class PointwiseOpCodegen : public AstVisitor
                 os_ << "[";
                 if (genScatter) {
                     auto scatter = Scatter_(Tensor(shptr));
-                    os_ << genNumElem(scatter.impl()) << " * " << rankVar << " + ";
+                    os_ << genNumElem(scatter.impl()) << " * " << RANK.impl()->name() << " + ";
                 }
                 os_ << iteratorForDim(0);
                 if (genNumpyBroadcast)
@@ -500,7 +501,8 @@ class PointwiseOpCodegen : public AstVisitor
 
         void visit(AllReduceImpl& node) {
         }
-
+        void visit(SendImpl& node) {
+        }
         virtual void visit(ReduceImpl& node) 
         {
         }
@@ -620,7 +622,7 @@ class PointwiseOpCodegen : public AstVisitor
                 !generateAsVars_) {
                 os_ << "[";
                 if (storageLoc != shptr && shptr->layout() == Sliced && storageLoc->layout() != Sliced) {
-                    os_ << genNumElem(shptr) << " * " << rankVar << " + ";
+                    os_ << genNumElem(shptr) << " * " << RANK.impl()->name() << " + ";
                 }
                 if (node.isPointwise())
                     os_ << "0";
@@ -1074,6 +1076,9 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
         inputs.insert(it.second);
     }
     
+    inputs.insert(WORLD.impl());
+    inputs.insert(RANK.impl());
+
     auto dimExprs = allDimExprs(inputs.begin(), inputs.end());
     inputs.insert(dimExprs.begin(), dimExprs.end());
 
@@ -1086,7 +1091,7 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
         codeStream << ", ";
     }
     
-    codeStream << cublasHandleTy << " " << cublasHandleVar << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+    codeStream << cublasHandleTy << " " << cublasHandleVar;
     codeStream << ") {" << std::endl;
 
     //Function body
@@ -1149,6 +1154,9 @@ std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std
     auto dimExprs = allDimExprs(inputArgs.begin(), inputArgs.end());
     inputArgs.insert(dimExprs.begin(), dimExprs.end());
     
+    inputArgs.insert(WORLD.impl());
+    inputArgs.insert(RANK.impl());
+
     int ii = 0;
     for (auto iter : inputArgs) {
         codeStream << elemTypeToCType(iter->elemType()) << " ";
@@ -1160,7 +1168,6 @@ std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std
         ii++;
     }
 
-    codeStream << extraArgs << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
     codeStream << ") {" << std::endl;
 
     return codeStream.str();
@@ -1357,7 +1364,9 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     }
 
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
-
+    binOpInputs.insert(WORLD.impl());
+    binOpInputs.insert(RANK.impl());
+    
     int ii = 0;
     for (auto iter : binOpInputs) {
         arguments.insert(iter);
@@ -1368,8 +1377,8 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
         codeStream << ", ";
     }
 
-    codeStream << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
-    codeStream << ") {" << std::endl;
+    
+    codeStream << dummyArg << ") {" << std::endl;
 
     //Function body
     //Iterator initialization from threadIdx and blockIdx
@@ -1493,8 +1502,8 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
                     //Use warpShuffle's tree reduction
                     codeStream << indent(indentLevel) << "for (int offset = warpSize/2; offset > 0; offset /= 2) {" << std::endl
-                            << indent(2) << normReg << " += __shfl_down_sync(0xffffffff, " << normReg << ", offset);" << std::endl
-                            << indent(1) << "}" << std::endl;
+                               << indent(2) << normReg << " += __shfl_down_sync(0xffffffff, " << normReg << ", offset);" << std::endl
+                               << indent(indentLevel) << "}" << std::endl;
                     codeStream << indent(indentLevel) << "if (" << "(" << threadIdxInGrid << ")" << "% warpSize == 0) " << std::endl 
                                << indent(indentLevel+1)<< "atomicAdd(" << output->name() << ", " << normReg << ");" << std::endl;
 
@@ -3978,7 +3987,7 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
 
         if (stageDef->type() == MatMulNode)
             call << ", " << cublasHandleVar;
-        call << ", " << commSizeArg << ", " << rankVar << ")";
+        call << ")";
 
     } else if (cfunc.useCooperativeGrid == false) {
         if (stageDef->type() == BinaryPointwiseOpNode || stageDef->type() == DropoutNode) {
@@ -4006,7 +4015,7 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
 
         if (stageDef->type() == MatMulNode)
             call << ", " << cublasHandleVar;
-        call << ", " << commSizeArg << ", " << rankVar << ")";
+        call << ")";
     } else {
         numThreads << "dim3 " << numThreadsVar << " = {256, 1, 1};" << std::endl;
         numThreadBlocks << "dim3 " << numThreadBlocksVar << " = {1, 1, 1};" << std::endl;
@@ -4026,23 +4035,9 @@ std::string genCUDAFuncCall(std::shared_ptr<StageImpl> outStage, CFunc& cfunc, s
                 call << ", ";
             ii++;
         }
-        call << ", &" << commSizeArg << ", &" << rankVar << "};" << std::endl;
+        call << "};" << std::endl;
         call << indent(indentLevel) << cudaCheck(printCudaLaunchCooperativeKernel(cfunc.name, numThreadBlocksVar, numThreadsVar, kernelArgsVar, 0, streamArg)) << std::endl;
     }
-
-    /**
-     * 
-  dim3 threads = {256, 1,1};
-  dim3 blocks = {1,1,1};
-  int blockspersm  = 0;
-  CUDACHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-    &blockspersm, (void*)binOpFunc0, threads.x, 0));
-    blocks.x = 80 * blockspersm;
-  void* args[] = {
-    &N, &lr, &beta1, &beta2, &gamma, &w, &g, &m, &v, &S5, &S6, &S7, &S8, &comm_size, &rank
-  };
-  CUDACHECK(cudaLaunchCooperativeKernel((void*)binOpFunc0, blocks, threads, args, 0, stream));
-     */
     
     kernelCall++;
     return call.str();
@@ -4214,7 +4209,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::shared_ptr<ScatterImpl> scatter = AstNodeImpl::asScatterImpl(stageDef);
                         printf("FIXME: %s:%d\n", __FILE__, __LINE__);
                         funcBody << indent(1) << stageName << " = " << scatter->arg()->name() << " + " << 
-                            scatter->size(0) << "/" << "FIX"/*scatter->numGPUs()*/ << " * " << rankString << std::endl;
+                            scatter->size(0) << "/" << "FIX"/*scatter->numGPUs()*/ << " * " << RANK.impl()->name() << std::endl;
                         break;
                     }
                     case ReduceTensorNode: {
@@ -4366,6 +4361,9 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     for (auto iter : pipeline_.arguments()) {
         pipeArgs.insert(iter);
     }
+
+    pipeArgs.insert(WORLD.impl());
+    pipeArgs.insert(RANK.impl());
     
     /*Print sub functions (CUDA kernels)*/
     for (auto& cfunc : subFunctions) {
@@ -4388,7 +4386,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         os_ << "float& " << iter.second.second << ", ";
     }
     //NCCLComm and CUDA Stream arguments
-    os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg << ", " << commSizeTy << " " << commSizeArg << ", " << rankVarTy << " " << rankVar;
+    os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg << ")";
 
     if (useCUBLAS)
         os_ << ", " << cublasHandleTy << " " << cublasHandleVar;
@@ -4593,28 +4591,30 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             //Start main function block
             mainFunc << "{" << std::endl;
             
-            const std::string mpiStartCode = 
-                "  //Get number of gpus in the node\n"
-                "  int N_GPUs;\n"
-                "  CUDACHECK(cudaGetDeviceCount(&N_GPUs));\n"
-                "  MPI_Init(&argc, &argv);\n"
-                "  int comm_size, rank;\n"
-                "  MPI_Comm_size(MPI_COMM_WORLD, &comm_size);\n"
-                "  MPI_Comm_rank(MPI_COMM_WORLD, &rank);\n"
-                "  ncclComm_t comm;\n"
-                "  CUDACHECK(cudaSetDevice(rank % N_GPUs));\n"
-                "  //initializing NCCL\n"
-                "  ncclUniqueId id;\n"
-                "  if (rank == 0) ncclGetUniqueId(&id);\n"
-                "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n"
-                "  ncclCommInitRank(&comm, comm_size, id, rank);\n";
+            std::stringstream mpiStartCode;
+            mpiStartCode <<"  //Get number of gpus in the node\n" <<
+                "  int N_GPUs;\n" <<
+                "  CUDACHECK(cudaGetDeviceCount(&N_GPUs));\n" <<
+                "  MPI_Init(&argc, &argv);\n" <<
+                indent(1) << printDeclaration(RANK.impl()) <<
+                indent(1) << printDeclaration(WORLD.impl()) <<
+                indent(1) << printDeclaration(GROUP.impl()) <<
+                "  MPI_Comm_size(MPI_COMM_WORLD, &" << WORLD.impl()->name() << ");\n" <<
+                "  MPI_Comm_rank(MPI_COMM_WORLD, &" << RANK.impl()->name() << ");\n" <<
+                "  ncclComm_t comm;\n" <<
+                "  CUDACHECK(cudaSetDevice(" << RANK.impl()->name() << " % N_GPUs));\n" <<
+                "  //initializing NCCL\n" <<
+                "  ncclUniqueId id;\n" <<
+                "  if (rank == 0) ncclGetUniqueId(&id);\n" <<
+                "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n" <<
+                "  ncclCommInitRank(&comm, " << WORLD.impl()->name() <<", id," << RANK.impl()->name() << ");" << std::endl;
             const std::string streamDecl = "  " + streamTy + " " + streamArg + ";\n" + "  cudaStreamCreate(&"+streamArg+");\n";
             const std::string cublasHandleDecl = indent(1) + cublasHandleTy + " "  + cublasHandleVar + ";\n" +
                                                  indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+")") + "\n" +
                                                  indent(1) + cublasCheck("cublasSetStream(" + cublasHandleVar + ", " + streamArg+")") + "\n" +
                                                  indent(1) + cublasCheck("cublasSetMathMode(" + cublasHandleVar + ", CUBLAS_TENSOR_OP_MATH)");
 
-            mainFunc << mpiStartCode << "  " << epochDecl << streamDecl;
+            mainFunc << mpiStartCode.str() << "  " << epochDecl << streamDecl;
             if (useCUBLAS)
                 mainFunc << cublasHandleDecl << std::endl;
             mainFunc << indent(1) << mpibarrier << std::endl;
@@ -4705,7 +4705,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             for (auto iter : psToNameAndTimeVar) {
                 mainFunc << iter.second.second << ", ";
             }
-            mainFunc << commArg << ", " << streamArg << ", " << commSizeArg << ", " << rankVar;
+            mainFunc << commArg << ", " << streamArg;
             if (useCUBLAS)
                 mainFunc << ", " << cublasHandleVar;
             mainFunc << "); "<< std::endl;
