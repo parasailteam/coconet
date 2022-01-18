@@ -87,34 +87,11 @@ void ACCCDSLImpl::BinaryPointwiseOp::setupAndCheckDimensions()
             ASSERT(false, "First operand dims for dim '"<< dim <<"', '"<< sizeOp1->name() <<"' do not match with second '"<< sizeOp2->name() <<"'");
         }
         dimSizes_.push_back(sizeOp2);
-        
-        // if (operand(0)->isConstant() && operand(1)->isConstant()) {
-        //     dimSizes_.push_back(one);
-        // } else if (operand(0)->isConstant()) {
-        //     dimSizes_.push_back(operand(1)->size(dim));
-        // } else if (operand(1)->isConstant()) {
-        //     dimSizes_.push_back(operand(0)->size(dim));
-        // } else {
-
-
-        //     if (dim >= dimsOp1) {
-        //         sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
-        //         sizeOp1 = sizeOp2;
-        //     } else if (dim >= dimsOp2) {
-        //         sizeOp2 = sizeOp1;
-        //     } else {
-        //         sizeOp2 = operand(1)->isPointwise() ? operand(1)->size(0) : operand(1)->size(dim);
-        //         sizeOp1 = operand(0)->isPointwise() ? operand(0)->size(0) : operand(0)->size(dim);
-        //     }
-            
-        //     if (sizeOp1 != sizeOp2) {
-        //         ASSERT(false, "First operand dims for dim '"<< dim <<"', '"<<sizeOp1<<"' do not match with second '"<<sizeOp2<<"'");
-        //     }
-
-        //     dimSizes_.push_back(sizeOp2);
-        // }
     }
 
+    //TODO: Set the group 
+    ASSERT(false, "Set group");
+    
     TensorLayout layoutOp1 = operand(0)->layout();
     TensorLayout layoutOp2 = operand(1)->layout();
     

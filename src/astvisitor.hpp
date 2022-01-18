@@ -163,6 +163,12 @@ public:
         }
         addToMap(node, a);
     }
+    void visit(ProcessGroupImpl& node) {
+        checkMap
+        ProcessGroupImpl* b = new ProcessGroupImpl(AstNodeImpl::asProcessGroupImpl(clone(node.parent())), 
+                                                  AstNodeImpl::asExpressionImpl(clone(node.splitSize())));
+        addToMap(node, b);
+    }
     virtual void visit(StageImpl& node)
     {
         checkMap
@@ -314,6 +320,9 @@ class VisitChildrenVisitor : public AstVisitor {
     virtual void visit(NormImpl& node) {
         visitChildren(node);
     }
+    virtual void visit(ProcessGroupImpl& node) {
+        visitChildren(node);
+    }
     virtual void visit(CastImpl& node) {
         visitChildren(node);
     }
@@ -400,6 +409,9 @@ public:
     }
     void visit(ReduceTensorImpl& node) {
         visitChildren(node);
+    }
+    void visit(ProcessGroupImpl& node) {
+        //ProcessGroup has no parents
     }
     void visit(CastImpl& node) {
         visitChildren(node);
@@ -506,7 +518,9 @@ public:
         os_ << node.prob();
         os_ << ")";
     }
-
+    void visit(ProcessGroupImpl& node) {
+        node.parent()->accept(*this);
+    }
     void visit(UnaryPointwiseOp& node) {
         visitChildren(node);
     }

@@ -70,6 +70,7 @@ enum AstNodeType {
     UpdateNode,
     FusedNode,
     VariableNode,
+    ProcessGroupNode,
     ConstantNode,
     CastNode,
     ScatterNode,
@@ -130,6 +131,7 @@ class FusedNode;
 class TensorImpl;
 class UnaryPointwiseOp;
 class VariableImpl;
+class ProcessGroupImpl;
 class CastImpl;
 template<class T>
 class ConstantImpl;
@@ -201,6 +203,7 @@ public:
     asChild(ScatterImpl);
     asChild(UnaryPointwiseOp);
     asChild(VariableImpl);
+    asChild(ProcessGroupImpl);
     asChild(CastImpl);
     asChild(ConstUInt64);
     asChild(ConstInt64);
@@ -236,6 +239,7 @@ public:
     virtual void visit(StageImpl& node) = 0;
     virtual void visit(UpdateImpl& node) = 0;
     virtual void visit(VariableImpl& node) = 0;
+    virtual void visit(ProcessGroupImpl& node) = 0;
     virtual void visit(CastImpl& node) = 0;
     virtual void visit(ConstUInt64& node) = 0;
     virtual void visit(ConstInt64& node) = 0;
@@ -265,24 +269,25 @@ protected:
     std::string name_;
     //Type of tensor element.
     TensorElemType elemType_;
-    //Is expression scattered/sliced on the gpus.
-    //If it is then the expression is sliced over its first dimension.
-    bool scattered_;
+    //Process Group
+    std::shared_ptr<ProcessGroupImpl> group_;
 
 public:
-    ExpressionImpl(AstNodeType type, bool scattered) : AstNodeImpl(type), scattered_(scattered) {}
-    ExpressionImpl(AstNodeType type, bool scattered, std::shared_ptr<ExpressionImpl> child) : 
-        AstNodeImpl(type, child), scattered_(scattered) 
+    ExpressionImpl(AstNodeType type, std::shared_ptr<ProcessGroupImpl> group) : group_(group), AstNodeImpl(type) {}
+    ExpressionImpl(AstNodeType type, std::shared_ptr<ExpressionImpl> child, std::shared_ptr<ProcessGroupImpl> group) : 
+        group_(group), AstNodeImpl(type, child)
     {
     }
 
-    ExpressionImpl(AstNodeType type, bool scattered, std::shared_ptr<AstNodeImpl> child1, std::shared_ptr<AstNodeImpl> child2) : 
-        AstNodeImpl(type, child1, child2), scattered_(scattered) 
+    ExpressionImpl(AstNodeType type, std::shared_ptr<AstNodeImpl> child1, std::shared_ptr<AstNodeImpl> child2,
+                  std::shared_ptr<ProcessGroupImpl> group) : 
+        group_(group), AstNodeImpl(type, child1, child2)
     {
     }
 
-    ExpressionImpl(AstNodeType type, bool scattered, std::initializer_list<std::shared_ptr<AstNodeImpl>> children) : 
-        AstNodeImpl(type, children), scattered_(scattered) 
+    ExpressionImpl(AstNodeType type, std::initializer_list<std::shared_ptr<AstNodeImpl>> children,
+                   std::shared_ptr<ProcessGroupImpl> group) : 
+        group_(group), AstNodeImpl(type, children)
     {
     }
     
@@ -295,6 +300,7 @@ public:
     virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return dimSizes_[dim];}
     virtual TensorElemType elemType() {return elemType_;}
     virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return dimSizes_;}
+    std::shared_ptr<ProcessGroupImpl> group() {return group_;}
 
     bool isPointwise();
 
@@ -367,7 +373,7 @@ private:
     const T val_;
 public:
     //A constant is never scattered but is available on all GPUs
-    ConstantImpl(T val) : val_(val), ExpressionImpl(AstNodeType::ConstantNode, false) {setupAndCheckDimensions();}
+    ConstantImpl(T val) : val_(val), ExpressionImpl(AstNodeType::ConstantNode, WORLD.impl()) {setupAndCheckDimensions();}
     T val() {return val_;}
 
     virtual std::string name() {
@@ -441,9 +447,8 @@ public:
 
 class TensorImpl : public ExpressionImpl {
 public:
-    TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n1, std::shared_ptr<ExpressionImpl> n2, TensorLayout layout, std::string name,
-                bool scattered) : 
-        ExpressionImpl(AstNodeType::TensorNode, scattered)
+    TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n1, std::shared_ptr<ExpressionImpl> n2, TensorLayout layout, std::string name, std::shared_ptr<ProcessGroupImpl> group) : 
+        ExpressionImpl(AstNodeType::TensorNode, group)
     {
         dimSizes_ = {n1, n2};
         layout_ = layout;
@@ -451,8 +456,9 @@ public:
         name_ = name;
     }
 
-    TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n, TensorLayout layout, std::string name, bool scattered) : 
-        ExpressionImpl(AstNodeType::TensorNode, scattered)
+    TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n, TensorLayout layout, std::string name,
+               std::shared_ptr<ProcessGroupImpl> group) : 
+        ExpressionImpl(AstNodeType::TensorNode, group)
     {
         dimSizes_  = {n};
         layout_ = layout;
@@ -460,8 +466,9 @@ public:
         name_ = name;
     }
 
-    TensorImpl(TensorElemType elemType, std::vector<std::shared_ptr<ExpressionImpl>> dimSizes, TensorLayout layout, std::string name, bool scattered) : 
-        ExpressionImpl(AstNodeType::TensorNode, scattered)
+    TensorImpl(TensorElemType elemType, std::vector<std::shared_ptr<ExpressionImpl>> dimSizes, TensorLayout layout, 
+               std::string name, std::shared_ptr<ProcessGroupImpl> group) : 
+        ExpressionImpl(AstNodeType::TensorNode, group)
     {
         elemType_ = elemType; 
         dimSizes_ = dimSizes; 
@@ -489,10 +496,9 @@ public:
 class VariableImpl : public TensorImpl {
 public:
     //A variable is never scattered but is present on all gpus
-    VariableImpl(TensorElemType t, std::string name) : TensorImpl(t, std::shared_ptr<ConstInt32>(new ConstInt32(1)), Replicated, name, false) 
-    {
-        type_ = AstNodeType::VariableNode;
-    }
+    VariableImpl(TensorElemType t, std::string name, std::shared_ptr<ProcessGroupImpl> group) : 
+        TensorImpl(t, std::shared_ptr<ConstInt32>(new ConstInt32(1)), Replicated, name, group) 
+    {}
 
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
@@ -500,6 +506,34 @@ public:
 
 
 };
+
+class ProcessGroupImpl : public ExpressionImpl {
+public:
+    //A variable is never scattered but is present on all gpus
+    ProcessGroupImpl(std::shared_ptr<ProcessGroupImpl> parent, std::shared_ptr<ExpressionImpl> splitSize) : 
+    ExpressionImpl(AstNodeType::ProcessGroupNode, parent, splitSize, WORLD.impl())
+    {
+        setupAndCheckDimensions();
+    }
+
+    virtual void accept(AstVisitor& v) {
+        v.visit(*this);
+    }
+
+    std::shared_ptr<ProcessGroupImpl> parent() {return std::dynamic_pointer_cast<ProcessGroupImpl>(children_[0]);}
+    std::shared_ptr<ExpressionImpl> splitSize() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[1]);}
+
+    virtual void setupAndCheckDimensions() 
+    {
+        dimSizes_.clear();
+        dimSizes_.push_back(std::shared_ptr<ConstInt32>(new ConstInt32(1)));
+        elemType_ = Int32;
+        layout_ = Local;
+    }
+
+    std::string name() {return (parent() == nullptr) ? splitSize()->name() : "group_"+std::to_string(nameCounter++);}
+};
+
 
 template<class T> 
 std::shared_ptr<ExpressionImpl> _constantValToConstantImpl(TensorElemType t, T val);
@@ -526,9 +560,8 @@ class BinaryPointwiseOp : public ExpressionImpl {
 protected:
     BinaryOp op_;
 public:
-    BinaryPointwiseOp(BinaryOp op, std::shared_ptr<ExpressionImpl> t1, std::shared_ptr<ExpressionImpl> t2,
-                      bool scattered) :
-        ExpressionImpl(AstNodeType::BinaryPointwiseOpNode, scattered, t1, t2), op_(op) 
+    BinaryPointwiseOp(BinaryOp op, std::shared_ptr<ExpressionImpl> t1, std::shared_ptr<ExpressionImpl> t2) :
+        ExpressionImpl(AstNodeType::BinaryPointwiseOpNode, t1, t2, nullptr), op_(op) 
     {
         setupAndCheckDimensions();    
     }
@@ -618,7 +651,7 @@ protected:
     UnaryOp op_;
 public:
     UnaryPointwiseOp(UnaryOp op, std::shared_ptr<ExpressionImpl> t) :
-        ExpressionImpl(AstNodeType::UnaryPointwiseOpNode, false, t), op_(op)
+        ExpressionImpl(AstNodeType::UnaryPointwiseOpNode, t, t->group()), op_(op)
     {
         setupAndCheckDimensions();
     }
@@ -695,12 +728,12 @@ class ScatterImpl : public ExpressionImpl {
 private:
 public:
     ScatterImpl(std::shared_ptr<TensorImpl> t) : 
-        ExpressionImpl(AstNodeType::ScatterNode, true, t) 
+        ExpressionImpl(AstNodeType::ScatterNode, t, t->group()) 
     {
         setupAndCheckDimensions();
     }
     ScatterImpl(std::shared_ptr<StageImpl> s) : 
-        ExpressionImpl(AstNodeType::ScatterNode, true, std::static_pointer_cast<ExpressionImpl>(s))
+        ExpressionImpl(AstNodeType::ScatterNode, std::static_pointer_cast<ExpressionImpl>(s), s->group())
     {
         setupAndCheckDimensions();
     }
@@ -728,8 +761,8 @@ public:
 class IteImpl : public ExpressionImpl {
 private:
 public:
-    IteImpl(std::shared_ptr<ExpressionImpl> cond, std::shared_ptr<ExpressionImpl> ifTrue, std::shared_ptr<ExpressionImpl> ifFalse, bool scattered) :
-        ExpressionImpl(AstNodeType::IteNode, scattered, {cond, ifTrue, ifFalse})
+    IteImpl(std::shared_ptr<ExpressionImpl> cond, std::shared_ptr<ExpressionImpl> ifTrue, std::shared_ptr<ExpressionImpl> ifFalse) :
+        ExpressionImpl(AstNodeType::IteNode, {cond, ifTrue, ifFalse}, nullptr)
     {
         setupAndCheckDimensions();
     }
@@ -773,7 +806,9 @@ public:
          *                          |    Expression         |  Layout should match  |                       |   match
          * 
          */ 
-
+        
+        //TODO: Set Group
+        ASSERT(false, "Set group");
         dimSizes_.clear();
         
         if (ifTrue()->elemType() != ifFalse()->elemType()) {
@@ -869,8 +904,8 @@ public:
 
 class StageImpl : public ExpressionImpl {
 public:
-    StageImpl(std::shared_ptr<ExpressionImpl> definition, bool scattered)  : 
-        ExpressionImpl(AstNodeType::StageNode, scattered, definition) 
+    StageImpl(std::shared_ptr<ExpressionImpl> definition)  : 
+        ExpressionImpl(AstNodeType::StageNode, definition, definition->group()) 
     {
         name_ = "S" + std::to_string(nameCounter++);
         setupAndCheckDimensions();
@@ -930,7 +965,7 @@ private:
     float prob_;
 public:
     DropoutImpl(std::shared_ptr<StageImpl> arg, float prob)  : 
-        ExpressionImpl(AstNodeType::DropoutNode, false, arg), prob_(prob) 
+        ExpressionImpl(AstNodeType::DropoutNode, arg, arg->group()), prob_(prob) 
     {
         setupAndCheckDimensions();
     }
@@ -954,7 +989,7 @@ public:
 class UpdateImpl : public ExpressionImpl {
 public:
     UpdateImpl(std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> def)  : 
-        ExpressionImpl(AstNodeType::UpdateNode, false, t, def)
+        ExpressionImpl(AstNodeType::UpdateNode, t, def, nullptr)
     {
         setupAndCheckDimensions();
     }
@@ -982,6 +1017,9 @@ public:
         
         layout_ = update()->layout();
         elemType_ = update()->elemType();
+
+        ASSERT(arg()->group() == update()->group(), "Group of argument and update is different.");
+        group_ = arg()->group();
     }
 };
 
@@ -989,9 +1027,9 @@ public:
 class MatMulImpl : public ExpressionImpl {
 public:
     MatMulImpl(std::shared_ptr<ExpressionImpl> m1, std::shared_ptr<ExpressionImpl> m2) :
-        ExpressionImpl(AstNodeType::MatMulNode, false, 
+        ExpressionImpl(AstNodeType::MatMulNode, 
                       AstNodeImpl::asExpressionImpl(m1), 
-                      AstNodeImpl::asExpressionImpl(m2))
+                      AstNodeImpl::asExpressionImpl(m2), m1->group())
     {
         setupAndCheckDimensions();
     }
@@ -1040,7 +1078,8 @@ public:
             else
                 ASSERT(false, "Not implemented");
         }
-            
+        
+        ASSERT(operand(0)->group() == operand(1)->group(), "Groups of both operands are different.");
     }
 };
 
@@ -1049,9 +1088,9 @@ protected:
     ReduceOperation op_;
 public:
     ReduceTensorImpl(std::shared_ptr<TensorImpl> t, ReduceOperation op) : 
-        ExpressionImpl(AstNodeType::ReduceTensorNode, t->scattered(), t), op_(op) {}
+        ExpressionImpl(AstNodeType::ReduceTensorNode, t, t->group()), op_(op) {}
     ReduceTensorImpl(std::shared_ptr<StageImpl> s, ReduceOperation op) : 
-        ExpressionImpl(AstNodeType::ReduceTensorNode, s->scattered(), s), op_(op) {}
+        ExpressionImpl(AstNodeType::ReduceTensorNode, s, s->group()), op_(op) {}
     
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
@@ -1079,9 +1118,9 @@ public:
 class NormImpl : public ExpressionImpl {
 public:
     NormImpl(std::shared_ptr<TensorImpl> t) : 
-        ExpressionImpl(AstNodeType::NormNode, t->scattered(), t) {}
+        ExpressionImpl(AstNodeType::NormNode, t, t->group()) {}
     NormImpl(std::shared_ptr<StageImpl> s) :
-        ExpressionImpl(AstNodeType::NormNode, s->scattered(), s) {}
+        ExpressionImpl(AstNodeType::NormNode, s, s->group()) {}
     
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
@@ -1107,7 +1146,7 @@ private:
     TensorElemType castType_;
 public:
     CastImpl(TensorElemType castType, std::shared_ptr<ExpressionImpl> op) :
-        ExpressionImpl(AstNodeType::CastNode, op->scattered(), op), castType_(castType)
+        ExpressionImpl(AstNodeType::CastNode, op, op->group()), castType_(castType)
     {
         setupAndCheckDimensions();
     }
@@ -1175,15 +1214,15 @@ class CommCollPrimitiveImpl : public ExpressionImpl {
 protected:
 
 public:
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t) :
-        ExpressionImpl(n, false, t) {}
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s) :
-        ExpressionImpl(n, false, s) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ProcessGroupImpl> group) :
+        ExpressionImpl(n, t, group) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ProcessGroupImpl> group) :
+        ExpressionImpl(n, s, group) {}
 
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst) :
-        ExpressionImpl(n, false, t, dst) {}
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst) :
-        ExpressionImpl(n, false, s, dst) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst, std::shared_ptr<ProcessGroupImpl> group) :
+        ExpressionImpl(n, t, dst, group) {}
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst, std::shared_ptr<ProcessGroupImpl> group) :
+        ExpressionImpl(n, s, dst, group) {}
 };
 
 /*Collective Communications*/
@@ -1193,12 +1232,12 @@ protected:
 public:
     //All Reduce will not work on scattered expressions
     AllReduceImpl(std::shared_ptr<TensorImpl> t, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, t), op_(op) {
+        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, t, t->group()), op_(op) {
             setupAndCheckDimensions();
         }
     
     AllReduceImpl(std::shared_ptr<StageImpl> s, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, s), op_(op) {setupAndCheckDimensions();}
+        CommCollPrimitiveImpl(AstNodeType::AllReduceNode, s, s->group()), op_(op) {setupAndCheckDimensions();}
 
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
@@ -1253,7 +1292,7 @@ class BroadcastImpl : public CommCollPrimitiveImpl {
 public:
     //Broadcast will not work on scattered expressions
     BroadcastImpl(std::shared_ptr<TensorImpl> t, std::vector<int> gpus) : 
-        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, t)
+        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, t, t->group())
     {
         /*Tensor should be stored on only one GPU, which is the root*/
         // ASSERT(t->numGPUs() == 1, "Broadcast can only broadcast a tensor stored on only one gpu. Input tensor is stored on " << t->numGPUs() << " gpus");
@@ -1267,7 +1306,7 @@ public:
     }
     
     BroadcastImpl(std::shared_ptr<StageImpl> s, std::vector<int> gpus) : 
-        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, s)
+        CommCollPrimitiveImpl(AstNodeType::BroadcastNode, s, s->group())
     {
         setupAndCheckDimensions();
         layout_ = Replicated;    
@@ -1307,7 +1346,7 @@ protected:
 public:
     //Reduce will never work on scattered expressions
     ReduceImpl(std::shared_ptr<TensorImpl> t, int root) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceNode, t),
+        CommCollPrimitiveImpl(AstNodeType::ReduceNode, t, t->group()),
         root_(root) {
         /*Only one gpu stores result of reduce*/
         setupAndCheckDimensions();
@@ -1315,7 +1354,7 @@ public:
     }
     
     ReduceImpl(std::shared_ptr<StageImpl> s, int root) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceNode, s) {
+        CommCollPrimitiveImpl(AstNodeType::ReduceNode, s, s->group()) {
         /*Only one gpu stores result of reduce*/
         layout_ = Local;
         setupAndCheckDimensions();
@@ -1360,13 +1399,13 @@ public:
 class AllGatherImpl : public CommCollPrimitiveImpl {
 public:
     AllGatherImpl(std::shared_ptr<TensorImpl> t) : 
-        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, t)
+        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, t, t->group())
     {
         setupAndCheckDimensions();
     }
     
     AllGatherImpl(std::shared_ptr<StageImpl> s) : 
-        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, s)
+        CommCollPrimitiveImpl(AstNodeType::AllGatherNode, s, s->group())
     {
         setupAndCheckDimensions();
     }
@@ -1404,14 +1443,14 @@ protected:
 public:
     //ReduceScatter returns a scattered expressions
     ReduceScatterImpl(std::shared_ptr<TensorImpl> t, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, t), op_(op)
+        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, t, t->group()), op_(op)
     {
         setupAndCheckDimensions();
         elemType_ = t->elemType();
     }
     
     ReduceScatterImpl(std::shared_ptr<StageImpl> s, ReduceOperation op) : 
-        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, s), op_(op)
+        CommCollPrimitiveImpl(AstNodeType::ReduceScatterNode, s, s->group()), op_(op)
     {
         setupAndCheckDimensions();
         elemType_ = s->elemType();
@@ -1444,13 +1483,13 @@ public:
 class SendImpl : public CommCollPrimitiveImpl {
 public:
     SendImpl(std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst) : 
-        CommCollPrimitiveImpl(AstNodeType::SendNode, t, dst)
+        CommCollPrimitiveImpl(AstNodeType::SendNode, t, dst, nullptr)
     {
         setupAndCheckDimensions();
     }
     
     SendImpl(std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst) : 
-        CommCollPrimitiveImpl(AstNodeType::SendNode, s, dst)
+        CommCollPrimitiveImpl(AstNodeType::SendNode, s, dst, nullptr)
     {
         setupAndCheckDimensions();
     }
@@ -1468,6 +1507,8 @@ public:
         dimSizes_.clear();
         elemType_ = arg()->elemType();
         layout_ = arg()->layout();
+
+        ASSERT(false, "Set the group");
     }
 };
 }

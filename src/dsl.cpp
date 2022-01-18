@@ -129,7 +129,7 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
         PROCESS_VAL(IteNode)
         PROCESS_VAL(UpdateNode)
         PROCESS_VAL(SendNode);
-        
+
         default:
             ASSERT(false, "Undefined AstNodeType " << t);
     }
@@ -138,13 +138,9 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
 }
 
 Variable ACCCDSL::RANK(Int32, "rank");
-Variable ACCCDSL::WORLD(Int32, "world");
-Variable ACCCDSL::GROUP(Int32, "group");
+ProcessGroup ACCCDSL::WORLD(Variable(Int32, "world"));
 
-SingleDimExpression ACCCDSL::NextGroupRank(SingleDimExpression group, SingleDimExpression rank)
-{
-    return group + rank;
-}
+int ProcessGroup::nameCounter = 0;
 
 CollCommOperation<AllReduce_> ACCCDSL::AllReduce(AllReduceOp);
 CollCommOperation<AllGather_> ACCCDSL::AllGather(AllGatherOp);

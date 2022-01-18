@@ -642,6 +642,7 @@ namespace ACCCDSL {
         void print(std::ostream& os) {
             ASSERT(topoOrder_.size() > 0, "Create DAG before printing.");
             os << "Pipeline: " << name() << ":" << std::endl;
+            
             for (auto ps : topoOrder_) {
                 SingleStagePrintVisitor printer(os);
                 ps->print(os);

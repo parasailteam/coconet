@@ -10,14 +10,16 @@ void AR_P2P_C()
     Variable S(Int32, "S");    
     Variable H(Int32, "H");
 
-    Tensor w(Float16, {H,H}, Sliced, "w");
-    Tensor b(Float16, H, Replicated, "b");
-    Tensor in(Float16, {B,S,H}, Local, "in");
-    Tensor r(Float16, {B,S,H}, Replicated, "r");
-    
+    ProcessGroup group = WORLD.split(2);
+
+    Tensor w(Float16, {H,H}, Sliced, "w", group);
+    Tensor b(Float16, H, Replicated, "b", group);
+    Tensor in(Float16, {B,S,H}, Local, "in", group);
+    Tensor r(Float16, {B,S,H}, Replicated, "r", group);
+
     Stage sum = AllReduce(Summation, in);
-    Stage recv = Send(sum, NextGroupRank(GROUP, RANK));
-    Stage out = Dropout(recv+b, 0.1) + r;
+    // Stage recv = Send(sum, group.nextGroupRank(RANK));
+    Stage out = Dropout(sum+b, 0.1) + r;
 
     Pipeline transformer({in}, {out});
     

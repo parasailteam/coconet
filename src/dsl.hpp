@@ -97,10 +97,50 @@ ContinuousExpression operator/(SingleDimExpression v, ContinuousExpression x);
 class Variable : public SingleDimExpression 
 {
 public:
-    Variable(TensorElemType t, std::string name) : SingleDimExpression(std::shared_ptr<ACCCDSLImpl::VariableImpl>(new ACCCDSLImpl::VariableImpl(t, name)))
+    Variable(TensorElemType t, std::string name, ProcessGroup group = WORLD) : SingleDimExpression(std::shared_ptr<ACCCDSLImpl::VariableImpl>(new ACCCDSLImpl::VariableImpl(t, name, group.impl())))
     {}
 
     std::shared_ptr<ACCCDSLImpl::VariableImpl> impl() {return ACCCDSLImpl::AstNodeImpl::asVariableImpl(exprImpl_);}
+};
+
+template<class T>
+class Const : public SingleDimExpression {
+public:
+    Const(TensorElemType t, T val) :
+        SingleDimExpression(ACCCDSLImpl::constantValToConstantImpl(t, val))
+    {}
+};
+
+class ProcessGroup : public SingleDimExpression
+{
+    private:
+        static int nameCounter;
+        SingleDimExpression splitSize_;
+
+    public:
+        ProcessGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> impl) : SingleDimExpression(impl), splitSize_(impl->splitSize()) {}
+
+        ProcessGroup(ProcessGroup parent, SingleDimExpression splitSize) : SingleDimExpression(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl>(new ACCCDSLImpl::ProcessGroupImpl(parent.impl(), splitSize.impl()))), splitSize_(splitSize)
+    {}
+
+    //WORLD has no parent
+    ProcessGroup(SingleDimExpression splitSize) : SingleDimExpression(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl>(new ACCCDSLImpl::ProcessGroupImpl(nullptr, splitSize.impl()))), splitSize_(splitSize) {}
+
+    ProcessGroup split(SingleDimExpression splitSize) {
+        return ProcessGroup(*this, splitSize);
+    }
+
+    ProcessGroup split(int splitSize) {
+        return ProcessGroup(*this, Const<int>(Int32, splitSize));
+    }
+
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> impl() {return ACCCDSLImpl::AstNodeImpl::asProcessGroupImpl(exprImpl_);}
+    SingleDimExpression nextGroupRank(SingleDimExpression rank)
+    {
+        ; //(*this)*(ProcessGroup(impl()->parent())/this->splitSize_) + rank;
+    }
+    
+    declImpl(ProcessGroup)
 };
 
 class Tensor : public ContinuousExpression {
@@ -110,16 +150,16 @@ public:
     // friend std::pair<ACCCDSL::ScatteredStage, ACCCDSL::Stage> ACCCDSL::Pipeline::split(Stage& stageToSplit, SplitType splitType);
 
 public:
-    Tensor(TensorElemType elemType, Variable n1, Variable n2, TensorLayout layout, std::string name) :
-        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, n1.impl(), n2.impl(), layout, name, false)))
+    Tensor(TensorElemType elemType, Variable n1, Variable n2, TensorLayout layout, std::string name, ProcessGroup group = WORLD) :
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, n1.impl(), n2.impl(), layout, name, group.impl())))
     {}
 
-    Tensor(TensorElemType elemType, Variable n, TensorLayout layout, std::string name) :
-        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, n.impl(), layout, name, false)))
+    Tensor(TensorElemType elemType, Variable n, TensorLayout layout, std::string name, ProcessGroup group = WORLD) :
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, n.impl(), layout, name, group.impl())))
     {}
 
-    Tensor(TensorElemType elemType, std::vector<Variable> dimSizes, TensorLayout layout, std::string name) :
-        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, std::vector<std::shared_ptr<ACCCDSLImpl::ExpressionImpl>>(0, nullptr), layout, name, false)))
+    Tensor(TensorElemType elemType, std::vector<Variable> dimSizes, TensorLayout layout, std::string name, ProcessGroup group = WORLD) :
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, std::vector<std::shared_ptr<ACCCDSLImpl::ExpressionImpl>>(0, nullptr), layout, name, group.impl())))
     {
         for (auto d : dimSizes) {
             impl()->addDim(d.impl());
@@ -138,7 +178,7 @@ public:
     }
 public:
     Stage(ContinuousExpression definition) : 
-          ContinuousExpression(std::shared_ptr<ACCCDSLImpl::StageImpl>(new ACCCDSLImpl::StageImpl(definition.impl(), false)))
+          ContinuousExpression(std::shared_ptr<ACCCDSLImpl::StageImpl>(new ACCCDSLImpl::StageImpl(definition.impl())))
     {
         
     }
@@ -309,14 +349,6 @@ class Cast : public ContinuousExpression {
 public:
     Cast(TensorElemType elemType, ContinuousExpression op) : 
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::CastImpl>(new ACCCDSLImpl::CastImpl(elemType, op.impl())))
-    {}
-};
-
-template<class T>
-class Const : public SingleDimExpression {
-public:
-    Const(TensorElemType t, T val) :
-        SingleDimExpression(ACCCDSLImpl::constantValToConstantImpl(t, val))
     {}
 };
 

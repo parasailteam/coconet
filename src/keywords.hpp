@@ -5,8 +5,7 @@
 
 namespace ACCCDSL {
 extern Variable RANK;
-extern Variable WORLD;
-extern Variable GROUP;
+extern ProcessGroup WORLD;
 
 SingleDimExpression NextGroupRank(SingleDimExpression group, SingleDimExpression rank);
 }

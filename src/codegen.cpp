@@ -110,6 +110,10 @@ class NumElemGen : public AstVisitor
             os_ << node.name();
         }
 
+        void visit(ProcessGroupImpl& node) {
+            os_ << node.name();
+        }
+
         virtual void visit(ConstUInt64& node) {
             os_ << node.val();
         }
@@ -672,6 +676,19 @@ class PointwiseOpCodegen : public AstVisitor
         void visit(UpdateImpl& node) {
             ASSERT(false, "to implement");
         }
+
+        void visit(ProcessGroupImpl& node) {
+            // if (useHalf2) {
+            //     os_ << "__half2half2(";
+            // }
+            
+            os_ << ((generateCheck_ ? "__" : "") + node.name());
+
+            // if (useHalf2) {
+            //     os_ << ")";
+            // }
+        }
+
 
         void visit(VariableImpl& node) {
             // if (useHalf2) {
@@ -4619,7 +4636,6 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 "  MPI_Init(&argc, &argv);\n" <<
                 indent(1) << printDeclaration(RANK.impl()) <<
                 indent(1) << printDeclaration(WORLD.impl()) <<
-                indent(1) << printDeclaration(GROUP.impl()) <<
                 "  MPI_Comm_size(MPI_COMM_WORLD, &" << WORLD.impl()->name() << ");\n" <<
                 "  MPI_Comm_rank(MPI_COMM_WORLD, &" << RANK.impl()->name() << ");\n" <<
                 "  ncclComm_t comm;\n" <<
