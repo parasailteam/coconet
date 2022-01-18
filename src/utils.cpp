@@ -49,6 +49,10 @@ std::string elemTypeToCType(ACCCDSL::TensorElemType t)
             return "int";
         case ACCCDSL::TensorElemType::Int64:
             return "long";
+        case ACCCDSL::TensorElemType::MPIComm:
+            return "MPI_Comm";
+        case ACCCDSL::TensorElemType::NCCLComm:
+            return "ncclComm_t";
         default:
             ASSERT(false, "Unimplemented type");
             return "";

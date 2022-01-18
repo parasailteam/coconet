@@ -137,10 +137,11 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
     return "";
 }
 
-Variable ACCCDSL::RANK(Int32, "rank");
 ProcessGroup ACCCDSL::WORLD(Variable(Int32, "world"));
+std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ACCCDSLImpl::WORLDimpl = WORLD.impl();
+Variable ACCCDSL::RANK(WORLD.impl()->rankVar());
 
-int ProcessGroup::nameCounter = 0;
+int ACCCDSLImpl::ProcessGroupImpl::nameCounter = 0;
 
 CollCommOperation<AllReduce_> ACCCDSL::AllReduce(AllReduceOp);
 CollCommOperation<AllGather_> ACCCDSL::AllGather(AllGatherOp);
@@ -173,7 +174,7 @@ U genericConstWithClassOperatorOverload(T v, U x) {
     std::shared_ptr<ACCCDSLImpl::ExpressionImpl> constantNode;
     constantNode = valToConstNode(v).impl();
     auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, constantNode, 
-                                                   x.impl(), x.impl()->scattered());
+                                                   x.impl());
     return U(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
 }
 
@@ -181,13 +182,13 @@ template<class T, class U, ACCCDSLImpl::BinaryOp op>
 T genericClassWithConstOperatorOverload(T v, U x) {
     std::shared_ptr<ACCCDSLImpl::ExpressionImpl> constantNode;
     constantNode = valToConstNode(x).impl();
-    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, v.impl(), constantNode, v.impl()->scattered());
+    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, v.impl(), constantNode);
     return T(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
 }
 
 template<typename T, ACCCDSLImpl::BinaryOp op>
 T genericClassOpVariableOverload(Expression& v, Expression& x) {
-    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, v.impl(), x.impl(), false);
+    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, v.impl(), x.impl());
     return T(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
 }
 
@@ -296,19 +297,19 @@ ScatteredExpression ACCCDSL::operator/(ScatteredExpression x, float v) {
 /*Variable 'op' Scattered is again a scattered expression */
 template<ACCCDSLImpl::BinaryOp op>
 ScatteredExpression genericClassOpVariableOverload(ScatteredExpression v, SingleDimExpression x) {
-    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, v.impl(), x.impl(), true);
+    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, v.impl(), x.impl());
     return ScatteredExpression(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
 }
 
 template<ACCCDSLImpl::BinaryOp op>
 ScatteredExpression genericVariableOpClassOverload(SingleDimExpression x, ScatteredExpression v) {
-    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), v.impl(), true);
+    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), v.impl());
     return ScatteredExpression(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
 }
 
 template<ACCCDSLImpl::BinaryOp op>
 SingleDimExpression genericSingleDimExpressionOp(SingleDimExpression x, SingleDimExpression v) {
-    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), v.impl(), false);
+    auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), v.impl());
     return SingleDimExpression(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
 }
 
@@ -391,13 +392,13 @@ ContinuousExpression ACCCDSL::Sqrt(ContinuousExpression x) {
 }
 
 ContinuousExpression ACCCDSL::Ite(ContinuousExpression cond, ContinuousExpression ifTrue, ContinuousExpression ifFalse) {
-    return ContinuousExpression(std::make_shared<ACCCDSLImpl::IteImpl>(cond.impl(), ifTrue.impl(), ifFalse.impl(), false));
+    return ContinuousExpression(std::make_shared<ACCCDSLImpl::IteImpl>(cond.impl(), ifTrue.impl(), ifFalse.impl()));
 }
 
 ContinuousExpression ACCCDSL::Ite(ContinuousExpression cond, ContinuousExpression ifTrue, float ifFalse) {
-    return ContinuousExpression(std::make_shared<ACCCDSLImpl::IteImpl>(cond.impl(), ifTrue.impl(), valToConstNode(ifFalse).impl(), false));
+    return ContinuousExpression(std::make_shared<ACCCDSLImpl::IteImpl>(cond.impl(), ifTrue.impl(), valToConstNode(ifFalse).impl()));
 }
 
 ContinuousExpression ACCCDSL::Ite(SingleDimExpression cond, ContinuousExpression ifTrue, float ifFalse) {
-    return ContinuousExpression(std::make_shared<ACCCDSLImpl::IteImpl>(cond.impl(), ifTrue.impl(), valToConstNode(ifFalse).impl(), false));
+    return ContinuousExpression(std::make_shared<ACCCDSLImpl::IteImpl>(cond.impl(), ifTrue.impl(), valToConstNode(ifFalse).impl()));
 }

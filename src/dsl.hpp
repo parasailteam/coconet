@@ -42,7 +42,7 @@ class ContinuousExpression : public Expression {
     template<ACCCDSLImpl::BinaryOp op>
     ContinuousExpression genericOperatorOverload(ContinuousExpression& x, ContinuousExpression& y)
     {
-        auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), y.impl(), false);
+        auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), y.impl());
         return ContinuousExpression(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
     }
 
@@ -94,15 +94,6 @@ ContinuousExpression operator/(SingleDimExpression v, ContinuousExpression x);
 
 //TODO define above operators for all types
 
-class Variable : public SingleDimExpression 
-{
-public:
-    Variable(TensorElemType t, std::string name, ProcessGroup group = WORLD) : SingleDimExpression(std::shared_ptr<ACCCDSLImpl::VariableImpl>(new ACCCDSLImpl::VariableImpl(t, name, group.impl())))
-    {}
-
-    std::shared_ptr<ACCCDSLImpl::VariableImpl> impl() {return ACCCDSLImpl::AstNodeImpl::asVariableImpl(exprImpl_);}
-};
-
 template<class T>
 class Const : public SingleDimExpression {
 public:
@@ -114,7 +105,6 @@ public:
 class ProcessGroup : public SingleDimExpression
 {
     private:
-        static int nameCounter;
         SingleDimExpression splitSize_;
 
     public:
@@ -142,6 +132,22 @@ class ProcessGroup : public SingleDimExpression
     
     declImpl(ProcessGroup)
 };
+
+extern ProcessGroup WORLD;
+
+class Variable : public SingleDimExpression 
+{
+public:
+    Variable(std::shared_ptr<ACCCDSLImpl::VariableImpl> impl) : SingleDimExpression(impl) {}
+
+    Variable(TensorElemType t, std::string name) : 
+    SingleDimExpression(std::shared_ptr<ACCCDSLImpl::VariableImpl>(new ACCCDSLImpl::VariableImpl(t, name)))
+    {}
+
+    std::shared_ptr<ACCCDSLImpl::VariableImpl> impl() {return ACCCDSLImpl::AstNodeImpl::asVariableImpl(exprImpl_);}
+};
+
+extern Variable RANK;
 
 class Tensor : public ContinuousExpression {
 public:
@@ -216,7 +222,7 @@ class ScatteredExpression : public Expression {
     template<ACCCDSLImpl::BinaryOp op>
     ScatteredExpression genericOperatorOverload(ScatteredExpression& x, ScatteredExpression& y)
     {
-        auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), y.impl(), true);
+        auto node = new ACCCDSLImpl::BinaryPointwiseOp(op, x.impl(), y.impl());
         return ScatteredExpression(std::shared_ptr<ACCCDSLImpl::BinaryPointwiseOp>(node));
     }
 

@@ -19,7 +19,7 @@ void AR_P2P_C()
 
     Stage sum = AllReduce(Summation, in);
     // Stage recv = Send(sum, group.nextGroupRank(RANK));
-    Stage out = Dropout(sum+b, 0.1) + r;
+    Stage out = Dropout(sum+b, 0.1) - r;
 
     Pipeline transformer({in}, {out});
     

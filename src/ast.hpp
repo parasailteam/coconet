@@ -90,7 +90,10 @@ enum TensorElemType {
     UInt8,
     UInt16,
     UInt32,
-    UInt64
+    UInt64,
+    //MPI and NCCL Types
+    MPIComm,
+    NCCLComm
 };
 
 enum ReduceOperation {
@@ -146,6 +149,7 @@ class ScatterImpl;
 class IteImpl;
 class DropoutImpl;
 
+extern std::shared_ptr<ProcessGroupImpl> WORLDimpl;
 std::string AstNodeTypeToStr(AstNodeType t);
 std::string TensorElemTypeToStr(TensorElemType t);
 
@@ -373,7 +377,7 @@ private:
     const T val_;
 public:
     //A constant is never scattered but is available on all GPUs
-    ConstantImpl(T val) : val_(val), ExpressionImpl(AstNodeType::ConstantNode, WORLD.impl()) {setupAndCheckDimensions();}
+    ConstantImpl(T val) : val_(val), ExpressionImpl(AstNodeType::ConstantNode, WORLDimpl) {setupAndCheckDimensions();}
     T val() {return val_;}
 
     virtual std::string name() {
@@ -496,25 +500,47 @@ public:
 class VariableImpl : public TensorImpl {
 public:
     //A variable is never scattered but is present on all gpus
-    VariableImpl(TensorElemType t, std::string name, std::shared_ptr<ProcessGroupImpl> group) : 
-        TensorImpl(t, std::shared_ptr<ConstInt32>(new ConstInt32(1)), Replicated, name, group) 
-    {}
+    VariableImpl(TensorElemType t, std::string name) : 
+        TensorImpl(t, std::shared_ptr<ConstInt32>(new ConstInt32(1)), Replicated, name, WORLDimpl) 
+    {
+        type_ = AstNodeType::VariableNode;
+    }
 
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
     }
-
-
 };
 
 class ProcessGroupImpl : public ExpressionImpl {
+private:
+    std::shared_ptr<VariableImpl> sizeVar_;
+    std::shared_ptr<VariableImpl> rankVar_;
+    std::shared_ptr<VariableImpl> mpiCommVar_;
+    std::shared_ptr<VariableImpl> ncclCommVar_;
+    static int nameCounter;
+
 public:
     //A variable is never scattered but is present on all gpus
     ProcessGroupImpl(std::shared_ptr<ProcessGroupImpl> parent, std::shared_ptr<ExpressionImpl> splitSize) : 
-    ExpressionImpl(AstNodeType::ProcessGroupNode, parent, splitSize, WORLD.impl())
+    ExpressionImpl(AstNodeType::ProcessGroupNode, parent, splitSize, WORLDimpl)
     {
+        nameCounter++;
+        sizeVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(Int32, "size_"+name()));
+        rankVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(Int32, "rank_"+name()));
+        mpiCommVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(MPIComm, "mpiComm_"+name()));
+        ncclCommVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(NCCLComm, "ncclComm_"+name()));
+        children_.push_back(sizeVar_);
+        children_.push_back(rankVar_);
+        children_.push_back(mpiCommVar_);
+        children_.push_back(ncclCommVar_);
+
         setupAndCheckDimensions();
     }
+
+    std::shared_ptr<VariableImpl> sizeVar() {return sizeVar_;}
+    std::shared_ptr<VariableImpl> rankVar() {return rankVar_;}
+    std::shared_ptr<VariableImpl> mpiCommVar() {return mpiCommVar_;}
+    std::shared_ptr<VariableImpl> ncclCommVar() {return ncclCommVar_;}
 
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
@@ -531,9 +557,66 @@ public:
         layout_ = Local;
     }
 
-    std::string name() {return (parent() == nullptr) ? splitSize()->name() : "group_"+std::to_string(nameCounter++);}
+    std::string name() {return (parent() == nullptr) ? splitSize()->name() : "group_"+std::to_string(nameCounter);}
+
 };
 
+class StageImpl : public ExpressionImpl {
+public:
+    StageImpl(std::shared_ptr<ExpressionImpl> definition)  : 
+        ExpressionImpl(AstNodeType::StageNode, definition, definition->group()) 
+    {
+        name_ = "S" + std::to_string(nameCounter++);
+        setupAndCheckDimensions();
+    }
+    virtual void accept(AstVisitor& v) {
+        v.visit(*this);
+    }
+    std::shared_ptr<ExpressionImpl> definition() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
+    std::string name() {return name_;}
+
+    virtual void setupAndCheckDimensions() {
+        dimSizes_.clear();
+        for(size_t s = 0; s < definition()->dims(); s++) {
+            dimSizes_.push_back(definition()->size(s));
+        }
+        
+        layout_ = definition()->layout();
+        elemType_ = definition()->elemType();
+    }
+
+    void setName(std::string name) {name_ = name;}
+    StageImpl copyWithNewName(std::string newName) 
+    {
+        StageImpl newS = *this;
+        newS.setName(newName);
+        return newS;
+    }
+
+    std::set<std::shared_ptr<StageImpl>> dependsOnStages()
+    {
+        std::set<std::shared_ptr<StageImpl>> dependent;
+        std::queue<std::shared_ptr<AstNodeImpl>> exprQueue;
+        std::unordered_set<std::shared_ptr<AstNodeImpl>> visitedStages;
+
+        exprQueue.push(definition());
+
+        while (!exprQueue.empty()) {
+            auto expr = exprQueue.front();
+            exprQueue.pop();
+
+            auto used = AstNodeImpl::asExpressionImpl(expr)->usedExprs();
+            for (auto u : used) {
+                if (u->type() == StageNode) {
+                    dependent.insert(AstNodeImpl::asStageImpl(u));
+                    exprQueue.push(u);
+                }
+            }                
+        }
+
+        return dependent;
+    }
+};
 
 template<class T> 
 std::shared_ptr<ExpressionImpl> _constantValToConstantImpl(TensorElemType t, T val);
@@ -899,63 +982,6 @@ public:
             gpus_.push_back(gpuBinOp);
         }
         #endif
-    }
-};
-
-class StageImpl : public ExpressionImpl {
-public:
-    StageImpl(std::shared_ptr<ExpressionImpl> definition)  : 
-        ExpressionImpl(AstNodeType::StageNode, definition, definition->group()) 
-    {
-        name_ = "S" + std::to_string(nameCounter++);
-        setupAndCheckDimensions();
-    }
-    virtual void accept(AstVisitor& v) {
-        v.visit(*this);
-    }
-    std::shared_ptr<ExpressionImpl> definition() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
-    std::string name() {return name_;}
-
-    virtual void setupAndCheckDimensions() {
-        dimSizes_.clear();
-        for(size_t s = 0; s < definition()->dims(); s++) {
-            dimSizes_.push_back(definition()->size(s));
-        }
-        
-        layout_ = definition()->layout();
-        elemType_ = definition()->elemType();
-    }
-
-    void setName(std::string name) {name_ = name;}
-    StageImpl copyWithNewName(std::string newName) 
-    {
-        StageImpl newS = *this;
-        newS.setName(newName);
-        return newS;
-    }
-
-    std::set<std::shared_ptr<StageImpl>> dependsOnStages()
-    {
-        std::set<std::shared_ptr<StageImpl>> dependent;
-        std::queue<std::shared_ptr<AstNodeImpl>> exprQueue;
-        std::unordered_set<std::shared_ptr<AstNodeImpl>> visitedStages;
-
-        exprQueue.push(definition());
-
-        while (!exprQueue.empty()) {
-            auto expr = exprQueue.front();
-            exprQueue.pop();
-
-            auto used = AstNodeImpl::asExpressionImpl(expr)->usedExprs();
-            for (auto u : used) {
-                if (u->type() == StageNode) {
-                    dependent.insert(AstNodeImpl::asStageImpl(u));
-                    exprQueue.push(u);
-                }
-            }                
-        }
-
-        return dependent;
     }
 };
 

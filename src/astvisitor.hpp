@@ -125,7 +125,7 @@ public:
         auto op0 = clone(node.operand(0));
         auto op1 = clone(node.operand(1));
         BinaryPointwiseOp* b = new BinaryPointwiseOp(node.op(), AstNodeImpl::asExpressionImpl(op0), 
-                                                     AstNodeImpl::asExpressionImpl(op1), node.scattered());
+                                                     AstNodeImpl::asExpressionImpl(op1));
         addToMap(node, b);
     }
     virtual void visit(MatMulImpl& node)
@@ -172,7 +172,7 @@ public:
     virtual void visit(StageImpl& node)
     {
         checkMap
-        StageImpl* b = new StageImpl(AstNodeImpl::asExpressionImpl(clone(node.definition())), node.scattered());
+        StageImpl* b = new StageImpl(AstNodeImpl::asExpressionImpl(clone(node.definition())));
         addToMap(node, b);
     }
     virtual void visit(DropoutImpl& node)
@@ -258,8 +258,7 @@ public:
         checkMap
         IteImpl* b = new IteImpl(AstNodeImpl::asExpressionImpl(clone(node.cond())),
                                  AstNodeImpl::asExpressionImpl(clone(node.ifTrue())),
-                                 AstNodeImpl::asExpressionImpl(clone(node.ifFalse())),
-                                 node.scattered());
+                                 AstNodeImpl::asExpressionImpl(clone(node.ifFalse())));
         addToMap(node, b);
     }
 };

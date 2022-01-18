@@ -167,7 +167,7 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim
     }
     
     if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
-        numElemStream << ", " << WORLD.impl()->name() << ")";
+        numElemStream << ", " << WORLD.impl()->sizeVar()->name() << ")";
 
     return numElemStream.str();
 }
@@ -212,6 +212,21 @@ ReduceOperation getCommCollRedOp(AstNodeImpl& node)
         default:
             return ReduceOperationNone;
     }
+}
+
+std::string mpiCommNameForGroup(std::shared_ptr<ProcessGroupImpl> procGroupImpl)
+{
+    return "mpi"+procGroupImpl->name()+"Comm";
+}
+
+std::string ncclCommNameForGroup(std::shared_ptr<ProcessGroupImpl> procGroupImpl)
+{
+    return "nccl"+procGroupImpl->name()+"Comm";
+}
+
+std::string sizeVarForGroup(std::shared_ptr<ProcessGroupImpl> procGroupImpl)
+{
+    return procGroupImpl->name()+"Size";
 }
 
 std::string uintTypeForSize(const size_t sz)
@@ -277,7 +292,7 @@ std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg, bool x=false)
     const std::string cudaMalloc = "cudaMalloc";
     std::stringstream code;
 
-    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*" + WORLD.impl()->name() :"")<< " * sizeof(" << 
+    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*" + WORLD.impl()->sizeVar()->name() :"")<< " * sizeof(" << 
         elemTypeToCType(arg->elemType()) << "))";
     
     return cudaCheck(code.str());
@@ -1093,8 +1108,8 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
         inputs.insert(it.second);
     }
     
-    inputs.insert(WORLD.impl());
-    inputs.insert(RANK.impl());
+    inputs.insert(WORLD.impl()->sizeVar());
+    inputs.insert(WORLD.impl()->rankVar());
 
     auto dimExprs = allDimExprs(inputs.begin(), inputs.end());
     inputs.insert(dimExprs.begin(), dimExprs.end());
@@ -1171,8 +1186,8 @@ std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std
     auto dimExprs = allDimExprs(inputArgs.begin(), inputArgs.end());
     inputArgs.insert(dimExprs.begin(), dimExprs.end());
     
-    inputArgs.insert(WORLD.impl());
-    inputArgs.insert(RANK.impl());
+    inputArgs.insert(WORLD.impl()->sizeVar());
+    inputArgs.insert(WORLD.impl()->rankVar());
 
     int ii = 0;
     for (auto iter : inputArgs) {
@@ -1381,9 +1396,10 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
     }
 
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
-    binOpInputs.insert(WORLD.impl());
-    binOpInputs.insert(RANK.impl());
     
+    binOpInputs.insert(WORLD.impl()->sizeVar());
+    binOpInputs.insert(WORLD.impl()->rankVar());
+
     int ii = 0;
     for (auto iter : binOpInputs) {
         arguments.insert(iter);
@@ -1816,8 +1832,6 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     const std::string sizeArgTy = "size_t";
     const std::string ncclTypeArg = "datatype";
     const std::string ncclTypeArgTy = "ncclDataType_t";
-    const std::string ncclCommArg = "comm";
-    const std::string ncclCommArgTy = "ncclComm_t";
     const std::string streamArg = "stream";
     const std::string streamArgTy = "cudaStream_t";
     const std::string redOp = "op";
@@ -1914,7 +1928,6 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
 
     ncclFuncArgs << sizeArgTy << " " << sizeArg << ", "
                  << ncclTypeArgTy << " " << ncclTypeArg << ", "
-                 << ncclCommArgTy << " " << ncclCommArg << ", "
                  << ((commCollType == AllReduceNode || commCollType == ReduceNode || commCollType == ReduceScatterNode) ?
                      redOpTy +" " + redOp + ", ": "")
                  << streamArgTy << " " << streamArg;
@@ -1941,9 +1954,8 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
     }
 
     ncclFuncCall << genNumElem(*outputs.begin()) << ", " << elemTypeToNCCLType((*commCollStages.begin())->elemType())
-                 << ", " << ncclCommArg << ", " << 
-                    (commCollRedOp != ReduceOperationNone ?
-                     redOpToNCCLReduceOp(commCollRedOp) + ", ": "")
+                 << ", " << (commCollRedOp != ReduceOperationNone ?
+                             redOpToNCCLReduceOp(commCollRedOp) + ", ": "")
                  << streamArg << ")";
 
     std::string ncclFuncCallStr = ncclCheck(ncclFuncCall.str());
@@ -2280,7 +2292,7 @@ std::string generateFusedNCCLCommColl(Pipeline& pipeline, PipelineStage* pipelin
 
             ncclFuncBody << "ncclCollAllReduceComputation, \"AllReduceComputation\", nullptr, nullptr, ";
             ncclFuncBody << sizeArg << ", " << ncclTypeArg << ", " << redOp << ", 0,"
-                         << ncclCommArg <<", " << streamArg << ", "
+                         << streamArg << ", "
                         << "ALLREDUCE_CHUNKSTEPS, ALLREDUCE_SLICESTEPS, fusedComputationParams";
             ncclFuncBody << " };" << std::endl;
             ncclFuncBody << "  return ncclEnqueueCheck(&info);\n}";
@@ -4103,9 +4115,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
 {
     /*Generate the reference function*/
     /*Print Function declaration*/
-    const std::string commArg = "comm";
     const std::string streamArg = "stream";
-    const std::string ncclCommTy = "ncclComm_t";
     const std::string streamTy = "cudaStream_t";
 
     std::vector<ArrayDecl> arrayDecls;
@@ -4119,6 +4129,15 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     const std::string startEvent = "start" + pipeline_.name();
     const std::string stopEvent = "stop" + pipeline_.name();
     const std::string elapsedTimeVar = "elapsedTime";
+    
+    //Obtain all Process Groups of input Tensors
+    std::set<std::shared_ptr<ProcessGroupImpl>> processGroups;
+
+    for (auto in : pipeline_.arguments()) {
+        processGroups.insert(in->group());
+    }
+
+    processGroups.insert(WORLDimpl);
 
     funcBody << indent(1) << "cudaEvent_t " << startEvent << ", "  << stopEvent << ";" << std::endl
              //Declare time variable
@@ -4174,7 +4193,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::shared_ptr<AllReduceImpl> allReduceColl = AstNodeImpl::asAllReduceImpl(stageDef);
                         funcBody << indent(1) << "ncclAllReduce(" << allReduceColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(allReduceColl->arg()) << ", " << elemTypeToNCCLType(allReduceColl->arg()->elemType()) << "," << 
-                            redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
+                            redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << allReduceColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllReduce";
                         inPlace = true;
                         break;
@@ -4183,7 +4202,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::shared_ptr<AllGatherImpl> allGatherColl = AstNodeImpl::asAllGatherImpl(stageDef);
                         funcBody << indent(1) << "ncclAllGather(" << allGatherColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(allGatherColl->arg()) << ", " << elemTypeToNCCLType(allGatherColl->arg()->elemType()) << 
-                            ", " << commArg << ", " << streamArg << ");" << std::endl;
+                            ", " << allGatherColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllGather";
                         break;
                     }
@@ -4192,7 +4211,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         funcBody << indent(1) << "ncclReduceScatter(" << reduceScatterColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(reduceScatterColl) << ", " << elemTypeToNCCLType(reduceScatterColl->arg()->elemType()) << 
                             ", " << redOpToNCCLReduceOp(reduceScatterColl->reduceOp()) << ", " <<
-                            commArg << ", " << streamArg << ");" << std::endl;
+                            reduceScatterColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "ReduceScatter";
                         break;
                     }
@@ -4201,7 +4220,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         funcBody << indent(1) << "ncclReduce(" << reduceColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(reduceColl->arg()) << ", " << elemTypeToNCCLType(reduceColl->arg()->elemType()) << 
                             redOpToNCCLReduceOp(reduceColl->reduceOp()) << ", " << reduceColl->root() << ", " <<
-                            commArg << ", " << streamArg << ");" << std::endl;
+                            reduceColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "ReduceNode";
                         break;
                     }
@@ -4210,7 +4229,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         funcBody << indent(1) << "ncclBroadcast(" << broadcastColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(broadcastColl->arg()) << ", " << elemTypeToNCCLType(broadcastColl->arg()->elemType()) << 
                             ", " << broadcastColl->root() << ", " <<
-                            commArg << ", " << streamArg << ");" << std::endl;
+                            broadcastColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "Broadcast";
                         break;
                     }
@@ -4226,7 +4245,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::stringstream ncclSendRecvCall;
                         ncclSendRecvCall << "(" << send->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
-                            ", " << dst << ", " << commArg << ", " << streamArg << ")";
+                            ", " << dst << ", " << send->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ")";
 
                         funcBody << indent(1) << "if (0 <= " << dst << " && " << dst <<" < " << WORLD.impl()->name() << ") {" << std::endl;
                         funcBody << indent(2) << "ncclSend" << ncclSendRecvCall.str() << ";" << std::endl;
@@ -4324,7 +4343,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 std::shared_ptr<AllGatherImpl> agStageDef = AstNodeImpl::asAllGatherImpl(agStage->definition());
                 funcBody << indent(1) << "ncclAllReduce(" << rsStageDef->arg()->name() << ", " << agStage->name() << ", " << 
                             genNumElem(agStageDef) << ", " << elemTypeToNCCLType(rsStageDef->arg()->elemType()) << "," << 
-                            redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
+                            redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << rsStageDef->arg()->group()->name() << ", " << streamArg << ");" << std::endl;
             } else {
                 for (auto outStage : pipelineStage->stages()) {
                     std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
@@ -4400,8 +4419,11 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         pipeArgs.insert(iter);
     }
 
-    pipeArgs.insert(WORLD.impl());
-    pipeArgs.insert(RANK.impl());
+    for (auto group : processGroups) {
+        pipeArgs.insert(group->sizeVar());
+        pipeArgs.insert(group->rankVar());
+        pipeArgs.insert(group->ncclCommVar());
+    }
     
     /*Print sub functions (CUDA kernels)*/
     for (auto& cfunc : subFunctions) {
@@ -4424,7 +4446,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         os_ << "float& " << iter.second.second << ", ";
     }
     //NCCLComm and CUDA Stream arguments
-    os_ << ncclCommTy << " " << commArg << ", " << streamTy << " " << streamArg;
+    os_ << streamTy << " " << streamArg;
 
     if (useCUBLAS)
         os_ << ", " << cublasHandleTy << " " << cublasHandleVar;
@@ -4443,7 +4465,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         std::stringstream mainFunc;
         const std::string mainSig = "int main(int argc, char** argv)";
         const std::string epochDecl = "if (argc < 2) { printf(\"Specify epochs as command arg\"); return 1;}\n"
-                                      "   int epochs = atoi(argv[1]);\n";
+                                      "  int epochs = atoi(argv[1]);\n";
         const std::string mpibarrier = "MPI_Barrier(MPI_COMM_WORLD);\n";
         const std::string ncclDestroyComm = "ncclCommDestroy(comm);\n";
         const std::string iterLoop = "for(int iter = 0; iter < epochs; iter++) {\n";
@@ -4635,16 +4657,48 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 "  CUDACHECK(cudaGetDeviceCount(&N_GPUs));\n" <<
                 "  MPI_Init(&argc, &argv);\n" <<
                 indent(1) << printDeclaration(RANK.impl()) <<
-                indent(1) << printDeclaration(WORLD.impl()) <<
-                "  MPI_Comm_size(MPI_COMM_WORLD, &" << WORLD.impl()->name() << ");\n" <<
+                indent(1) << printDeclaration(WORLDimpl->sizeVar()) <<
+                "  MPI_Comm_size(MPI_COMM_WORLD, &" << WORLDimpl->sizeVar()->name() << ");\n" <<
                 "  MPI_Comm_rank(MPI_COMM_WORLD, &" << RANK.impl()->name() << ");\n" <<
-                "  ncclComm_t comm;\n" <<
+                "  ncclComm_t " << WORLDimpl->ncclCommVar()->name() << ";\n" <<
                 "  CUDACHECK(cudaSetDevice(" << RANK.impl()->name() << " % N_GPUs));\n" <<
                 "  //initializing NCCL\n" <<
                 "  ncclUniqueId id;\n" <<
                 "  if (rank == 0) ncclGetUniqueId(&id);\n" <<
                 "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n" <<
-                "  ncclCommInitRank(&comm, " << WORLD.impl()->name() <<", id," << RANK.impl()->name() << ");" << std::endl;
+                "  ncclCommInitRank(&" << WORLDimpl->ncclCommVar()->name() << ", " << WORLDimpl->sizeVar()->name() <<", id," << RANK.impl()->name() << ");" << std::endl;
+            //After defining WORLD and RANK create all ProcessGroups in the program
+            for (auto group : processGroups) {
+                if (group == WORLDimpl) continue;
+
+                mpiStartCode << indent(1) << "//Creating group "<<group->name() << std::endl;
+                mpiStartCode << indent(1) << printDeclaration(group->sizeVar());
+                std::stringstream splitSizeStream;
+                NumElemGen gen(splitSizeStream);
+                gen.print(*group->splitSize());
+                mpiStartCode << indent(1) << group->sizeVar()->name() << " = "
+                             << group->parent()->sizeVar()->name() << " / " << splitSizeStream.str() << ";" << std::endl;
+                mpiStartCode << indent(1) << printDeclaration(group->rankVar())
+                             << indent(1) << group->rankVar()->name() << " = " << group->parent()->rankVar()->name() << " % " << group->sizeVar()->name() << ";" << std::endl;
+                mpiStartCode << indent(1) << group->name() << " = "
+                             << group->parent()->rankVar()->name() << " / " << group->sizeVar()->name() << ";" << std::endl;
+
+                std::string uniqueIdVar = "id_" + group->name();
+                mpiStartCode << "  " << "ncclUniqueId "<< uniqueIdVar << ";" 
+                             << "if (" << group->rankVar()->name() << " == 0) ncclGetUniqueId(&" << uniqueIdVar << ");\n" << std::endl;
+                
+                mpiStartCode << indent(1) << printDeclaration(group->mpiCommVar());
+                mpiStartCode << indent(1) << "MPI_Comm_split(" << group->parent()->mpiCommVar()->name() << ", "
+                             << group->name() << ", " << group->rankVar()->name() << ", " << "&" << group->mpiCommVar()->name() << ");" << std::endl;
+                mpiStartCode << indent(1) << "MPI_Bcast(&" << uniqueIdVar << ", sizeof(int), MPI_BYTE, 0, " 
+                             << group->mpiCommVar()->name() << ");" << std::endl;
+                
+                mpiStartCode << indent(1) << printDeclaration(group->ncclCommVar());
+                mpiStartCode << indent(1) << "ncclCommInitRank(&" << group->ncclCommVar()->name() << ", "
+                                          << group->sizeVar()->name() << ", " << uniqueIdVar << ", " << group->rankVar()->name() << ");" << std::endl;
+                mpiStartCode << indent(1) << "MPI_Barrier(MPI_COMM_WORLD);" << std::endl;
+                mpiStartCode << indent(1) << std::endl;
+            }
             const std::string streamDecl = "  " + streamTy + " " + streamArg + ";\n" + "  cudaStreamCreate(&"+streamArg+");\n";
             const std::string cublasHandleDecl = indent(1) + cublasHandleTy + " "  + cublasHandleVar + ";\n" +
                                                  indent(1) + cublasCheck("cublasCreate(&" + cublasHandleVar+")") + "\n" +
@@ -4742,7 +4796,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             for (auto iter : psToNameAndTimeVar) {
                 mainFunc << iter.second.second << ", ";
             }
-            mainFunc << commArg << ", " << streamArg;
+            mainFunc << streamArg;
             if (useCUBLAS)
                 mainFunc << ", " << cublasHandleVar;
             mainFunc << "); "<< std::endl;
