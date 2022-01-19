@@ -10,20 +10,18 @@ void AR_P2P_C()
     Variable S(Int32, "S");    
     Variable H(Int32, "H");
 
-    ProcessGroup group = WORLD.split(2);
+    ProcessGroup group = WORLDGroup.split(2);
+    ProcessGroupID groupid = group.id();
 
-    Tensor w(Float16, {H,H}, Sliced, "w", group);
-    Tensor b(Float16, H, Replicated, "b", group);
-    Tensor in(Float16, {B,S,H}, Local, "in", group);
-    Tensor r(Float16, {B,S,H}, Replicated, "r", group);
+    Tensor b(Float16, H, Replicated, "b", groupid);
+    Tensor in(Float16, {B,S,H}, Local, "in", groupid);
+    Tensor r(Float16, {B,S,H}, Replicated, "r", groupid);
 
     Stage sum = AllReduce(Summation, in);
-    // Stage recv = Send(sum, group.nextGroupRank(RANK));
-    Stage out = Dropout(sum+b, 0.1) - r;
+    Stage send = Dropout(sum+b, 0.1) - r;
+    Stage output = Send(send, group.next(), group.rank());
 
-    Pipeline transformer({in}, {out});
-    
-    Pipeline pipeline("pipeline-parallel", {w,b,in,r}, {out});
+    Pipeline pipeline("pipeline-parallel", {b,in,r}, {output});
 
     std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("pipeline-parallel-ar-p2p-c.cu", varBounds);

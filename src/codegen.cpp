@@ -113,7 +113,9 @@ class NumElemGen : public AstVisitor
         void visit(ProcessGroupImpl& node) {
             os_ << node.name();
         }
-
+        void visit(ProcessGroupIDImpl& node) {
+            os_ << node.name();
+        }
         virtual void visit(ConstUInt64& node) {
             os_ << node.val();
         }
@@ -167,7 +169,7 @@ std::string genNumElem(std::shared_ptr<ExpressionImpl> numElemExpr, int startDim
     }
     
     if (numElemExpr->layout() == Sliced || numElemExpr->layout() == Sliced_2)
-        numElemStream << ", " << WORLD.impl()->sizeVar()->name() << ")";
+        numElemStream << ", " << WORLDGroup.impl()->sizeVar()->name() << ")";
 
     return numElemStream.str();
 }
@@ -292,7 +294,7 @@ std::string printCUDAMalloc(std::shared_ptr<ExpressionImpl> arg, bool x=false)
     const std::string cudaMalloc = "cudaMalloc";
     std::stringstream code;
 
-    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*" + WORLD.impl()->sizeVar()->name() :"")<< " * sizeof(" << 
+    code << cudaMalloc << "(&" << arg->name() << ", " << genNumElem(arg) << (x && arg->layout() == Sliced ? "*" + WORLDGroup.impl()->sizeVar()->name() :"")<< " * sizeof(" << 
         elemTypeToCType(arg->elemType()) << "))";
     
     return cudaCheck(code.str());
@@ -693,6 +695,18 @@ class PointwiseOpCodegen : public AstVisitor
         }
 
         void visit(ProcessGroupImpl& node) {
+            // if (useHalf2) {
+            //     os_ << "__half2half2(";
+            // }
+            
+            os_ << ((generateCheck_ ? "__" : "") + node.name());
+
+            // if (useHalf2) {
+            //     os_ << ")";
+            // }
+        }
+
+        void visit(ProcessGroupIDImpl& node) {
             // if (useHalf2) {
             //     os_ << "__half2half2(";
             // }
@@ -1108,8 +1122,8 @@ CFunc generateCUBLASMatMul(Pipeline& pipeline, std::shared_ptr<StageImpl> output
         inputs.insert(it.second);
     }
     
-    inputs.insert(WORLD.impl()->sizeVar());
-    inputs.insert(WORLD.impl()->rankVar());
+    inputs.insert(WORLDGroup.impl()->sizeVar());
+    inputs.insert(WORLDGroup.impl()->rankVar());
 
     auto dimExprs = allDimExprs(inputs.begin(), inputs.end());
     inputs.insert(dimExprs.begin(), dimExprs.end());
@@ -1186,8 +1200,8 @@ std::string generateCUDAKernelDecl(Pipeline& pipeline, std::string funcName, std
     auto dimExprs = allDimExprs(inputArgs.begin(), inputArgs.end());
     inputArgs.insert(dimExprs.begin(), dimExprs.end());
     
-    inputArgs.insert(WORLD.impl()->sizeVar());
-    inputArgs.insert(WORLD.impl()->rankVar());
+    inputArgs.insert(WORLDGroup.impl()->sizeVar());
+    inputArgs.insert(WORLDGroup.impl()->rankVar());
 
     int ii = 0;
     for (auto iter : inputArgs) {
@@ -1397,8 +1411,8 @@ CFunc generateFusedBinOpCodeCUDA(Pipeline& pipeline, PipelineStage* pipeStage)
 
     std::set<std::shared_ptr<ExpressionImpl>> arguments;
     
-    binOpInputs.insert(WORLD.impl()->sizeVar());
-    binOpInputs.insert(WORLD.impl()->rankVar());
+    binOpInputs.insert(WORLDGroup.impl()->sizeVar());
+    binOpInputs.insert(WORLDGroup.impl()->rankVar());
 
     int ii = 0;
     for (auto iter : binOpInputs) {
@@ -4134,10 +4148,10 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     std::set<std::shared_ptr<ProcessGroupImpl>> processGroups;
 
     for (auto in : pipeline_.arguments()) {
-        processGroups.insert(in->group());
+        processGroups.insert(in->group()->group());
     }
 
-    processGroups.insert(WORLDimpl);
+    processGroups.insert(WORLDimpl->group());
 
     funcBody << indent(1) << "cudaEvent_t " << startEvent << ", "  << stopEvent << ";" << std::endl
              //Declare time variable
@@ -4193,7 +4207,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::shared_ptr<AllReduceImpl> allReduceColl = AstNodeImpl::asAllReduceImpl(stageDef);
                         funcBody << indent(1) << "ncclAllReduce(" << allReduceColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(allReduceColl->arg()) << ", " << elemTypeToNCCLType(allReduceColl->arg()->elemType()) << "," << 
-                            redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << allReduceColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
+                            redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << allReduceColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllReduce";
                         inPlace = true;
                         break;
@@ -4202,7 +4216,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::shared_ptr<AllGatherImpl> allGatherColl = AstNodeImpl::asAllGatherImpl(stageDef);
                         funcBody << indent(1) << "ncclAllGather(" << allGatherColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(allGatherColl->arg()) << ", " << elemTypeToNCCLType(allGatherColl->arg()->elemType()) << 
-                            ", " << allGatherColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
+                            ", " << allGatherColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllGather";
                         break;
                     }
@@ -4211,7 +4225,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         funcBody << indent(1) << "ncclReduceScatter(" << reduceScatterColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(reduceScatterColl) << ", " << elemTypeToNCCLType(reduceScatterColl->arg()->elemType()) << 
                             ", " << redOpToNCCLReduceOp(reduceScatterColl->reduceOp()) << ", " <<
-                            reduceScatterColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
+                            reduceScatterColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "ReduceScatter";
                         break;
                     }
@@ -4220,7 +4234,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         funcBody << indent(1) << "ncclReduce(" << reduceColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(reduceColl->arg()) << ", " << elemTypeToNCCLType(reduceColl->arg()->elemType()) << 
                             redOpToNCCLReduceOp(reduceColl->reduceOp()) << ", " << reduceColl->root() << ", " <<
-                            reduceColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
+                            reduceColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "ReduceNode";
                         break;
                     }
@@ -4229,7 +4243,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         funcBody << indent(1) << "ncclBroadcast(" << broadcastColl->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(broadcastColl->arg()) << ", " << elemTypeToNCCLType(broadcastColl->arg()->elemType()) << 
                             ", " << broadcastColl->root() << ", " <<
-                            broadcastColl->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
+                            broadcastColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "Broadcast";
                         break;
                     }
@@ -4245,9 +4259,9 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         std::stringstream ncclSendRecvCall;
                         ncclSendRecvCall << "(" << send->arg()->name() << ", " << stageName << ", " << 
                             genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
-                            ", " << dst << ", " << send->arg()->group()->ncclCommVar()->name() << ", " << streamArg << ")";
+                            ", " << dst << ", " << send->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ")";
 
-                        funcBody << indent(1) << "if (0 <= " << dst << " && " << dst <<" < " << WORLD.impl()->name() << ") {" << std::endl;
+                        funcBody << indent(1) << "if (0 <= " << dst << " && " << dst <<" < " << WORLDGroup.impl()->name() << ") {" << std::endl;
                         funcBody << indent(2) << "ncclSend" << ncclSendRecvCall.str() << ";" << std::endl;
                         funcBody << indent(2) << "ncclRecv" << ncclSendRecvCall.str() << ";" << std::endl;
                         funcBody << indent(1) << "}" << std::endl;
@@ -4657,19 +4671,19 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 "  CUDACHECK(cudaGetDeviceCount(&N_GPUs));\n" <<
                 "  MPI_Init(&argc, &argv);\n" <<
                 indent(1) << printDeclaration(RANK.impl()) <<
-                indent(1) << printDeclaration(WORLDimpl->sizeVar()) <<
-                "  MPI_Comm_size(MPI_COMM_WORLD, &" << WORLDimpl->sizeVar()->name() << ");\n" <<
+                indent(1) << printDeclaration(WORLDimpl->group()->sizeVar()) <<
+                "  MPI_Comm_size(MPI_COMM_WORLD, &" << WORLDimpl->group()->sizeVar()->name() << ");\n" <<
                 "  MPI_Comm_rank(MPI_COMM_WORLD, &" << RANK.impl()->name() << ");\n" <<
-                "  ncclComm_t " << WORLDimpl->ncclCommVar()->name() << ";\n" <<
+                "  ncclComm_t " << WORLDimpl->group()->ncclCommVar()->name() << ";\n" <<
                 "  CUDACHECK(cudaSetDevice(" << RANK.impl()->name() << " % N_GPUs));\n" <<
                 "  //initializing NCCL\n" <<
                 "  ncclUniqueId id;\n" <<
                 "  if (rank == 0) ncclGetUniqueId(&id);\n" <<
                 "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n" <<
-                "  ncclCommInitRank(&" << WORLDimpl->ncclCommVar()->name() << ", " << WORLDimpl->sizeVar()->name() <<", id," << RANK.impl()->name() << ");" << std::endl;
+                "  ncclCommInitRank(&" << WORLDimpl->group()->ncclCommVar()->name() << ", " << WORLDimpl->group()->sizeVar()->name() <<", id," << RANK.impl()->name() << ");" << std::endl;
             //After defining WORLD and RANK create all ProcessGroups in the program
             for (auto group : processGroups) {
-                if (group == WORLDimpl) continue;
+                if (group == WORLDGroupimpl) continue;
 
                 mpiStartCode << indent(1) << "//Creating group "<<group->name() << std::endl;
                 mpiStartCode << indent(1) << printDeclaration(group->sizeVar());

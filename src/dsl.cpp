@@ -2,6 +2,7 @@
 #include <keywords.hpp>
 
 using namespace ACCCDSL;
+using namespace ACCCDSLImpl;
 
 template<class T> 
 std::shared_ptr<ACCCDSLImpl::ExpressionImpl> ACCCDSLImpl::_constantValToConstantImpl(TensorElemType t, T val)
@@ -137,9 +138,34 @@ std::string ACCCDSLImpl::AstNodeTypeToStr(AstNodeType t)
     return "";
 }
 
-ProcessGroup ACCCDSL::WORLD(Variable(Int32, "world"));
-std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ACCCDSLImpl::WORLDimpl = WORLD.impl();
-Variable ACCCDSL::RANK(WORLD.impl()->rankVar());
+std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> ProcessGroupImpl::id(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr) {
+    if (id_ == nullptr) 
+        id_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, CurrentProcessGroupID));
+    return id_;
+}
+
+std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> ProcessGroupImpl::nextGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr) 
+{
+    if (id_ == nullptr) 
+        id_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, NextProcessGroupID));
+    return id_;
+}
+
+std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> ProcessGroupImpl::prevGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr) 
+{
+    if (id_ == nullptr) 
+        id_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, PreviousProcessGroupID));
+    return id_;
+}
+
+Variable ProcessGroup::rank() {return Variable(impl()->rankVar());}
+
+
+ProcessGroup ACCCDSL::WORLDGroup(Variable(Int32, "world"));
+std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ACCCDSLImpl::WORLDGroupimpl = WORLDGroup.impl();
+ProcessGroupID ACCCDSL::WORLD = WORLDGroup.id();
+std::shared_ptr<ProcessGroupIDImpl> ACCCDSLImpl::WORLDimpl = WORLD.impl();
+Variable ACCCDSL::RANK(WORLDGroup.impl()->rankVar());
 
 int ACCCDSLImpl::ProcessGroupImpl::nameCounter = 0;
 

@@ -163,10 +163,16 @@ public:
         }
         addToMap(node, a);
     }
-    void visit(ProcessGroupImpl& node) {
+    virtual void visit(ProcessGroupImpl& node) {
         checkMap
         ProcessGroupImpl* b = new ProcessGroupImpl(AstNodeImpl::asProcessGroupImpl(clone(node.parent())), 
                                                   AstNodeImpl::asExpressionImpl(clone(node.splitSize())));
+        addToMap(node, b);
+    }
+    virtual void visit(ProcessGroupIDImpl& node) {
+        checkMap
+        ProcessGroupIDImpl* b = new ProcessGroupIDImpl(AstNodeImpl::asProcessGroupImpl(clone(node.group())), 
+                                                       node.idType());
         addToMap(node, b);
     }
     virtual void visit(StageImpl& node)
@@ -322,6 +328,9 @@ class VisitChildrenVisitor : public AstVisitor {
     virtual void visit(ProcessGroupImpl& node) {
         visitChildren(node);
     }
+    virtual void visit(ProcessGroupIDImpl& node) {
+        visitChildren(node);
+    }
     virtual void visit(CastImpl& node) {
         visitChildren(node);
     }
@@ -410,6 +419,9 @@ public:
         visitChildren(node);
     }
     void visit(ProcessGroupImpl& node) {
+        //ProcessGroup has no parents
+    }
+    void visit(ProcessGroupIDImpl& node) {
         //ProcessGroup has no parents
     }
     void visit(CastImpl& node) {
@@ -519,6 +531,13 @@ public:
     }
     void visit(ProcessGroupImpl& node) {
         node.parent()->accept(*this);
+    }
+    void visit(ProcessGroupIDImpl& node) {
+        node.group()->accept(*this);
+        if (node.idType() == NextProcessGroupID)
+            os_ << " + 1";
+        else if (node.idType() == PreviousProcessGroupID)
+            os_ << " - 1";
     }
     void visit(UnaryPointwiseOp& node) {
         visitChildren(node);

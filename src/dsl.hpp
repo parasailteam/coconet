@@ -12,6 +12,7 @@
 namespace ACCCDSL {
 class Stage;
 class Tensor;
+class Variable;
 
 class Expression {
 protected:
@@ -102,6 +103,15 @@ public:
     {}
 };
 
+class ProcessGroupID : public SingleDimExpression
+{
+    public:
+    ProcessGroupID(std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> impl): 
+        SingleDimExpression(impl) {}
+    
+    declImpl(ProcessGroupID)
+};
+
 class ProcessGroup : public SingleDimExpression
 {
     private:
@@ -125,15 +135,17 @@ class ProcessGroup : public SingleDimExpression
     }
 
     std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> impl() {return ACCCDSLImpl::AstNodeImpl::asProcessGroupImpl(exprImpl_);}
-    SingleDimExpression nextGroupRank(SingleDimExpression rank)
-    {
-        ; //(*this)*(ProcessGroup(impl()->parent())/this->splitSize_) + rank;
-    }
     
+    ProcessGroupID id() {return ProcessGroupID(impl()->id(impl()));}
+    ProcessGroupID next() {return ProcessGroupID(impl()->nextGroup(impl()));}
+    ProcessGroupID prev() {return ProcessGroupID(impl()->prevGroup(impl()));}
+    Variable rank();
+
     declImpl(ProcessGroup)
 };
 
-extern ProcessGroup WORLD;
+extern ProcessGroup WORLDGroup;
+extern ProcessGroupID WORLD;
 
 class Variable : public SingleDimExpression 
 {
@@ -156,15 +168,15 @@ public:
     // friend std::pair<ACCCDSL::ScatteredStage, ACCCDSL::Stage> ACCCDSL::Pipeline::split(Stage& stageToSplit, SplitType splitType);
 
 public:
-    Tensor(TensorElemType elemType, Variable n1, Variable n2, TensorLayout layout, std::string name, ProcessGroup group = WORLD) :
+    Tensor(TensorElemType elemType, Variable n1, Variable n2, TensorLayout layout, std::string name, ProcessGroupID group = WORLD) :
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, n1.impl(), n2.impl(), layout, name, group.impl())))
     {}
 
-    Tensor(TensorElemType elemType, Variable n, TensorLayout layout, std::string name, ProcessGroup group = WORLD) :
+    Tensor(TensorElemType elemType, Variable n, TensorLayout layout, std::string name, ProcessGroupID group = WORLD) :
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, n.impl(), layout, name, group.impl())))
     {}
 
-    Tensor(TensorElemType elemType, std::vector<Variable> dimSizes, TensorLayout layout, std::string name, ProcessGroup group = WORLD) :
+    Tensor(TensorElemType elemType, std::vector<Variable> dimSizes, TensorLayout layout, std::string name, ProcessGroupID group = WORLD) :
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::TensorImpl>(new ACCCDSLImpl::TensorImpl(elemType, std::vector<std::shared_ptr<ACCCDSLImpl::ExpressionImpl>>(0, nullptr), layout, name, group.impl())))
     {
         for (auto d : dimSizes) {
@@ -424,6 +436,9 @@ public:
     
     Send_(Stage& s, SingleDimExpression dest) : 
         ContinuousExpression(std::shared_ptr<ACCCDSLImpl::SendImpl>(new ACCCDSLImpl::SendImpl(s.impl(), dest.impl()))) {}
+    
+    Send_(Stage& s, ProcessGroupID group, SingleDimExpression dest) : 
+        ContinuousExpression(std::shared_ptr<ACCCDSLImpl::SendImpl>(new ACCCDSLImpl::SendImpl(s.impl(), group.impl(), dest.impl()))) {}
 };
 
 // class Reduce_ : public Expression {
@@ -475,6 +490,10 @@ public:
     }
 
     T operator()(Stage& s, SingleDimExpression dst) {
+        return T(s, dst);
+    }
+
+    T operator()(Stage& s, ProcessGroupID group, SingleDimExpression dst) {
         return T(s, dst);
     }
 };

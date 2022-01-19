@@ -71,6 +71,7 @@ enum AstNodeType {
     FusedNode,
     VariableNode,
     ProcessGroupNode,
+    ProcessGroupIDNode,
     ConstantNode,
     CastNode,
     ScatterNode,
@@ -135,6 +136,7 @@ class TensorImpl;
 class UnaryPointwiseOp;
 class VariableImpl;
 class ProcessGroupImpl;
+class ProcessGroupIDImpl;
 class CastImpl;
 template<class T>
 class ConstantImpl;
@@ -149,7 +151,8 @@ class ScatterImpl;
 class IteImpl;
 class DropoutImpl;
 
-extern std::shared_ptr<ProcessGroupImpl> WORLDimpl;
+extern std::shared_ptr<ProcessGroupImpl> WORLDGroupimpl;
+extern std::shared_ptr<ProcessGroupIDImpl> WORLDimpl;
 std::string AstNodeTypeToStr(AstNodeType t);
 std::string TensorElemTypeToStr(TensorElemType t);
 
@@ -208,6 +211,7 @@ public:
     asChild(UnaryPointwiseOp);
     asChild(VariableImpl);
     asChild(ProcessGroupImpl);
+    asChild(ProcessGroupIDImpl);
     asChild(CastImpl);
     asChild(ConstUInt64);
     asChild(ConstInt64);
@@ -244,6 +248,7 @@ public:
     virtual void visit(UpdateImpl& node) = 0;
     virtual void visit(VariableImpl& node) = 0;
     virtual void visit(ProcessGroupImpl& node) = 0;
+    virtual void visit(ProcessGroupIDImpl& node) = 0;
     virtual void visit(CastImpl& node) = 0;
     virtual void visit(ConstUInt64& node) = 0;
     virtual void visit(ConstInt64& node) = 0;
@@ -274,23 +279,23 @@ protected:
     //Type of tensor element.
     TensorElemType elemType_;
     //Process Group
-    std::shared_ptr<ProcessGroupImpl> group_;
+    std::shared_ptr<ProcessGroupIDImpl> group_;
 
 public:
-    ExpressionImpl(AstNodeType type, std::shared_ptr<ProcessGroupImpl> group) : group_(group), AstNodeImpl(type) {}
-    ExpressionImpl(AstNodeType type, std::shared_ptr<ExpressionImpl> child, std::shared_ptr<ProcessGroupImpl> group) : 
+    ExpressionImpl(AstNodeType type, std::shared_ptr<ProcessGroupIDImpl> group) : group_(group), AstNodeImpl(type) {}
+    ExpressionImpl(AstNodeType type, std::shared_ptr<ExpressionImpl> child, std::shared_ptr<ProcessGroupIDImpl> group) : 
         group_(group), AstNodeImpl(type, child)
     {
     }
 
     ExpressionImpl(AstNodeType type, std::shared_ptr<AstNodeImpl> child1, std::shared_ptr<AstNodeImpl> child2,
-                  std::shared_ptr<ProcessGroupImpl> group) : 
+                  std::shared_ptr<ProcessGroupIDImpl> group) : 
         group_(group), AstNodeImpl(type, child1, child2)
     {
     }
 
     ExpressionImpl(AstNodeType type, std::initializer_list<std::shared_ptr<AstNodeImpl>> children,
-                   std::shared_ptr<ProcessGroupImpl> group) : 
+                   std::shared_ptr<ProcessGroupIDImpl> group) : 
         group_(group), AstNodeImpl(type, children)
     {
     }
@@ -304,7 +309,7 @@ public:
     virtual std::shared_ptr<ExpressionImpl> size(size_t dim) {return dimSizes_[dim];}
     virtual TensorElemType elemType() {return elemType_;}
     virtual const std::vector<std::shared_ptr<ExpressionImpl>>& dimSizes() {return dimSizes_;}
-    std::shared_ptr<ProcessGroupImpl> group() {return group_;}
+    std::shared_ptr<ProcessGroupIDImpl> group() {return group_;}
 
     bool isPointwise();
 
@@ -451,7 +456,7 @@ public:
 
 class TensorImpl : public ExpressionImpl {
 public:
-    TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n1, std::shared_ptr<ExpressionImpl> n2, TensorLayout layout, std::string name, std::shared_ptr<ProcessGroupImpl> group) : 
+    TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n1, std::shared_ptr<ExpressionImpl> n2, TensorLayout layout, std::string name, std::shared_ptr<ProcessGroupIDImpl> group) : 
         ExpressionImpl(AstNodeType::TensorNode, group)
     {
         dimSizes_ = {n1, n2};
@@ -461,7 +466,7 @@ public:
     }
 
     TensorImpl(TensorElemType elemType, std::shared_ptr<ExpressionImpl> n, TensorLayout layout, std::string name,
-               std::shared_ptr<ProcessGroupImpl> group) : 
+               std::shared_ptr<ProcessGroupIDImpl> group) : 
         ExpressionImpl(AstNodeType::TensorNode, group)
     {
         dimSizes_  = {n};
@@ -471,7 +476,7 @@ public:
     }
 
     TensorImpl(TensorElemType elemType, std::vector<std::shared_ptr<ExpressionImpl>> dimSizes, TensorLayout layout, 
-               std::string name, std::shared_ptr<ProcessGroupImpl> group) : 
+               std::string name, std::shared_ptr<ProcessGroupIDImpl> group) : 
         ExpressionImpl(AstNodeType::TensorNode, group)
     {
         elemType_ = elemType; 
@@ -501,7 +506,7 @@ class VariableImpl : public TensorImpl {
 public:
     //A variable is never scattered but is present on all gpus
     VariableImpl(TensorElemType t, std::string name) : 
-        TensorImpl(t, std::shared_ptr<ConstInt32>(new ConstInt32(1)), Replicated, name, WORLDimpl) 
+        TensorImpl(t, std::shared_ptr<ConstInt32>(new ConstInt32(1)), Replicated, name, WORLDimpl)
     {
         type_ = AstNodeType::VariableNode;
     }
@@ -511,6 +516,12 @@ public:
     }
 };
 
+enum ProcessGroupIDType {
+    PreviousProcessGroupID,
+    CurrentProcessGroupID,
+    NextProcessGroupID,
+};
+
 class ProcessGroupImpl : public ExpressionImpl {
 private:
     std::shared_ptr<VariableImpl> sizeVar_;
@@ -518,6 +529,9 @@ private:
     std::shared_ptr<VariableImpl> mpiCommVar_;
     std::shared_ptr<VariableImpl> ncclCommVar_;
     static int nameCounter;
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> id_;
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> nextGroup_;
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> previousGroup_;
 
 public:
     //A variable is never scattered but is present on all gpus
@@ -534,6 +548,9 @@ public:
         children_.push_back(mpiCommVar_);
         children_.push_back(ncclCommVar_);
 
+        id_ = nullptr;
+        nextGroup_ = nullptr;
+        previousGroup_ = nullptr;
         setupAndCheckDimensions();
     }
 
@@ -558,7 +575,32 @@ public:
     }
 
     std::string name() {return (parent() == nullptr) ? splitSize()->name() : "group_"+std::to_string(nameCounter);}
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> id(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr);
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> nextGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr);
+    std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> prevGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr);
+};
 
+class ProcessGroupIDImpl : public ExpressionImpl {
+    private:
+        ProcessGroupIDType type_;
+
+    public:
+        ProcessGroupIDImpl(std::shared_ptr<ProcessGroupImpl> group, ProcessGroupIDType type): type_(type), ExpressionImpl(AstNodeType::ProcessGroupIDNode, asExpressionImpl(group), WORLDimpl) {}
+        
+    virtual void accept(AstVisitor& v) {
+        v.visit(*this);
+    }
+
+    std::shared_ptr<ProcessGroupImpl> group() {return AstNodeImpl::asProcessGroupImpl(children_[0]);}
+    ProcessGroupIDType idType() {return type_;}
+
+    virtual void setupAndCheckDimensions() 
+    {
+        dimSizes_.clear();
+        dimSizes_.push_back(std::shared_ptr<ConstInt32>(new ConstInt32(1)));
+        elemType_ = Int32;
+        layout_ = Local;
+    }
 };
 
 class StageImpl : public ExpressionImpl {
@@ -1240,14 +1282,14 @@ class CommCollPrimitiveImpl : public ExpressionImpl {
 protected:
 
 public:
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ProcessGroupImpl> group) :
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ProcessGroupIDImpl> group) :
         ExpressionImpl(n, t, group) {}
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ProcessGroupImpl> group) :
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ProcessGroupIDImpl> group) :
         ExpressionImpl(n, s, group) {}
 
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst, std::shared_ptr<ProcessGroupImpl> group) :
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<TensorImpl> t, std::shared_ptr<ExpressionImpl> dst, std::shared_ptr<ProcessGroupIDImpl> group) :
         ExpressionImpl(n, t, dst, group) {}
-    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst, std::shared_ptr<ProcessGroupImpl> group) :
+    CommCollPrimitiveImpl(AstNodeType n, std::shared_ptr<StageImpl> s, std::shared_ptr<ExpressionImpl> dst, std::shared_ptr<ProcessGroupIDImpl> group) :
         ExpressionImpl(n, s, dst, group) {}
 };
 
@@ -1520,6 +1562,13 @@ public:
         setupAndCheckDimensions();
     }
 
+    SendImpl(std::shared_ptr<StageImpl> s, std::shared_ptr<ProcessGroupIDImpl> groupid,
+             std::shared_ptr<ExpressionImpl> dstRank) :
+        CommCollPrimitiveImpl(AstNodeType::SendNode, s, dstRank, groupid)
+    {
+        setupAndCheckDimensions();
+    }
+
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
     }
@@ -1533,8 +1582,6 @@ public:
         dimSizes_.clear();
         elemType_ = arg()->elemType();
         layout_ = arg()->layout();
-
-        ASSERT(false, "Set the group");
     }
 };
 }
