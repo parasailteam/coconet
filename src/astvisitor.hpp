@@ -58,13 +58,14 @@ public:
     {
         checkMap
         auto x = AstNodeImpl::asExpressionImpl(clone(node.arg()));
-        auto y = AstNodeImpl::asVariableImpl(clone(node.dst()));
+        auto y = AstNodeImpl::asProcessGroupIDImpl(clone(node.dstGroup()));
+        auto r = AstNodeImpl::asExpressionImpl(clone(node.dstRank()));
 
         SendImpl* a;
          if (x->type() == TensorNode) {
-            a = new SendImpl(AstNodeImpl::asTensorImpl(x), y);
+            a = new SendImpl(AstNodeImpl::asTensorImpl(x), y, r);
         } else {
-            a = new SendImpl(AstNodeImpl::asStageImpl(x), y);
+            a = new SendImpl(AstNodeImpl::asStageImpl(x), y, r);
         }
         addToMap(node, a);
     }
@@ -505,7 +506,9 @@ public:
         os_ << "send(";
         node.arg()->accept(*this);
         os_ << ", ";
-        node.dst()->accept(*this);
+        node.dstGroup()->accept(*this);
+        os_ << ", ";
+        node.dstRank()->accept(*this);
         os_ << ")";
     }
     void visit(BinaryPointwiseOp& node) {

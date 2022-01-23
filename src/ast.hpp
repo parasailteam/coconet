@@ -541,7 +541,7 @@ public:
         nameCounter++;
         sizeVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(Int32, "size_"+name()));
         rankVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(Int32, "rank_"+name()));
-        mpiCommVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(MPIComm, "mpiComm_"+name()));
+        mpiCommVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(MPIComm, (parent) ? "mpiComm_"+name() : "MPI_COMM_WORLD"));
         ncclCommVar_ = std::shared_ptr<VariableImpl>(new VariableImpl(NCCLComm, "ncclComm_"+name()));
         children_.push_back(sizeVar_);
         children_.push_back(rankVar_);
@@ -1569,10 +1569,18 @@ public:
         setupAndCheckDimensions();
     }
 
+    SendImpl(std::shared_ptr<TensorImpl> t, std::shared_ptr<ProcessGroupIDImpl> groupid,
+             std::shared_ptr<ExpressionImpl> dstRank) :
+        CommCollPrimitiveImpl(AstNodeType::SendNode, t, dstRank, groupid)
+    {
+        setupAndCheckDimensions();
+    }
+
     virtual void accept(AstVisitor& v) {
         v.visit(*this);
     }
-    std::shared_ptr<ExpressionImpl> dst() {return AstNodeImpl::asExpressionImpl(children_[1]);}
+    std::shared_ptr<ExpressionImpl> dstRank() {return AstNodeImpl::asExpressionImpl(children_[1]);}
+    std::shared_ptr<ProcessGroupIDImpl> dstGroup() {return group();}
     std::shared_ptr<ExpressionImpl> arg() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[0]);}
     virtual size_t dims() {return arg()->dims();};
     virtual TensorElemType elemType(){return arg()->elemType();}

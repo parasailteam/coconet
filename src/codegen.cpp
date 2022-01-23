@@ -4248,24 +4248,61 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         break;
                     }
                     case SendNode: {
-                        std::string dst;
+                        std::string sendDST;
+                        std::string recvSRC;
+                        std::string ncclComm;
+                        static int send_count = 0;
+
                         std::shared_ptr<SendImpl> send = AstNodeImpl::asSendImpl(stageDef);
                         
                         std::stringstream binopCodeStream;
                         PointwiseOpCodegen binOpCodegen(binopCodeStream, pipelineStage, pipeline_, false, false, CodeType::CUDA);
-                        binOpCodegen.print(*send->dst());
-                        dst = binopCodeStream.str();
-                        
-                        std::stringstream ncclSendRecvCall;
-                        ncclSendRecvCall << "(" << send->arg()->name() << ", " << stageName << ", " << 
-                            genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
-                            ", " << dst << ", " << send->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ")";
+                        binOpCodegen.print(*send->dstRank());
+                        std::string rankVar = binopCodeStream.str();
+                        auto dstGroup = send->dstGroup();
+                        std::string sendDSTVar = "send_to_"+std::to_string(send_count);
+                        std::string recvSRCVar = "recv_from_"+std::to_string(send_count);
+                        std::string groupSize = "";
 
-                        funcBody << indent(1) << "if (0 <= " << dst << " && " << dst <<" < " << WORLDGroup.impl()->name() << ") {" << std::endl;
-                        funcBody << indent(2) << "ncclSend" << ncclSendRecvCall.str() << ";" << std::endl;
-                        funcBody << indent(2) << "ncclRecv" << ncclSendRecvCall.str() << ";" << std::endl;
+                        if (dstGroup->idType() == CurrentProcessGroupID) {
+                            sendDST = rankVar;
+                            ncclComm = dstGroup->group()->ncclCommVar()->name();
+                            groupSize = dstGroup->group()->sizeVar()->name();
+                            recvSRC = rankVar;
+                        } else if (dstGroup->idType() == NextProcessGroupID) {
+                            std::string idvar = "(" + RANK.impl()->name() + "/" + dstGroup->group()->sizeVar()->name() + " + 1)";
+                            sendDST = idvar + "*" + dstGroup->group()->sizeVar()->name() + " + " + rankVar;
+                            
+                            ncclComm = WORLDGroupimpl->ncclCommVar()->name();
+                            groupSize = WORLDGroupimpl->sizeVar()->name();
+
+                            idvar = "(" + RANK.impl()->name() + "/" + dstGroup->group()->sizeVar()->name() + " - 1)";
+                            recvSRC = idvar + "*" + dstGroup->group()->sizeVar()->name() + " + " + rankVar;
+                        } else  if (dstGroup->idType() == PreviousProcessGroupID) {
+
+                        }
+
+                        std::stringstream ncclSendCall;
+                        ncclSendCall << "(" << send->arg()->name() << ", " << 
+                            genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
+                            ", " << sendDSTVar << ", " << ncclComm << ", " << streamArg << ")";
+
+                        std::stringstream ncclRecvCall;
+                        ncclRecvCall << "(" << stageName << ", " << 
+                            genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
+                            ", " << recvSRCVar << ", " << ncclComm << ", " << streamArg << ")";
+
+                        funcBody << indent(1) << "int " << sendDSTVar << " = " << sendDST << ";" << std::endl;
+                        funcBody << indent(1) << "if (1 <= " << sendDSTVar << " && " << sendDSTVar <<" < " << groupSize << ") {" << std::endl;
+                        funcBody << indent(2) << "ncclSend" << ncclSendCall.str() << ";" << std::endl;
+                        funcBody << indent(1) << "}" << std::endl;
+
+                        funcBody << indent(1) << "int " << recvSRCVar << " = " << recvSRC << ";" << std::endl;
+                        funcBody << indent(1) << "if (0 <= " << recvSRCVar << " && " << recvSRCVar <<" < " << groupSize << " - 1) {" << std::endl;
+                        funcBody << indent(2) << "ncclRecv" << ncclRecvCall.str() << ";" << std::endl;
                         funcBody << indent(1) << "}" << std::endl;
                         pipelineStageName = "Send";
+                        send_count++;
                         break;
                     }
                     case BinaryPointwiseOpNode: {
@@ -4678,7 +4715,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 "  CUDACHECK(cudaSetDevice(" << RANK.impl()->name() << " % N_GPUs));\n" <<
                 "  //initializing NCCL\n" <<
                 "  ncclUniqueId id;\n" <<
-                "  if (rank == 0) ncclGetUniqueId(&id);\n" <<
+                "  if (" << RANK.impl()->name() << "== 0) ncclGetUniqueId(&id);\n" <<
                 "  MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);\n" <<
                 "  ncclCommInitRank(&" << WORLDimpl->group()->ncclCommVar()->name() << ", " << WORLDimpl->group()->sizeVar()->name() <<", id," << RANK.impl()->name() << ");" << std::endl;
             //After defining WORLD and RANK create all ProcessGroups in the program
@@ -4694,7 +4731,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                              << group->parent()->sizeVar()->name() << " / " << splitSizeStream.str() << ";" << std::endl;
                 mpiStartCode << indent(1) << printDeclaration(group->rankVar())
                              << indent(1) << group->rankVar()->name() << " = " << group->parent()->rankVar()->name() << " % " << group->sizeVar()->name() << ";" << std::endl;
-                mpiStartCode << indent(1) << group->name() << " = "
+                mpiStartCode << indent(1) << "int " << group->name() << " = "
                              << group->parent()->rankVar()->name() << " / " << group->sizeVar()->name() << ";" << std::endl;
 
                 std::string uniqueIdVar = "id_" + group->name();
@@ -4704,7 +4741,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 mpiStartCode << indent(1) << printDeclaration(group->mpiCommVar());
                 mpiStartCode << indent(1) << "MPI_Comm_split(" << group->parent()->mpiCommVar()->name() << ", "
                              << group->name() << ", " << group->rankVar()->name() << ", " << "&" << group->mpiCommVar()->name() << ");" << std::endl;
-                mpiStartCode << indent(1) << "MPI_Bcast(&" << uniqueIdVar << ", sizeof(int), MPI_BYTE, 0, " 
+                mpiStartCode << indent(1) << "MPI_Bcast(&" << uniqueIdVar << ", sizeof(" << uniqueIdVar << "), MPI_BYTE, 0, " 
                              << group->mpiCommVar()->name() << ");" << std::endl;
                 
                 mpiStartCode << indent(1) << printDeclaration(group->ncclCommVar());
@@ -4833,13 +4870,13 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             mainFunc << intermFreeCode;
             std::stringstream printfTimeString;
             if (varBounds.size() == 0)
-                printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{SZ: %ld, Epochs: %d, ";
+                printfTimeString << "if (" << RANK.impl()->name() << " == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{SZ: %ld, Epochs: %d, ";
             else {
                 std::string varBoundsPrintfFmt = "";
                 for (auto varBound : varBounds) {
                     varBoundsPrintfFmt += varBound.var_.impl()->name() + ": %ld, ";
                 }
-                printfTimeString << "if (rank == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{" << varBoundsPrintfFmt << "Epochs: %d, ";
+                printfTimeString << "if (" << RANK.impl()->name() << " == 0) " << std::endl << indent(indentLevel+1) << "printf(\"{" << varBoundsPrintfFmt << "Epochs: %d, ";
             }
 
             for (auto iter : psToNameAndTimeVar) {

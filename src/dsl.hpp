@@ -494,7 +494,7 @@ public:
     }
 
     T operator()(Stage& s, ProcessGroupID group, SingleDimExpression dst) {
-        return T(s, dst);
+        return T(s, group, dst);
     }
 };
 

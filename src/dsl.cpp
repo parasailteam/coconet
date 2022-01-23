@@ -146,16 +146,16 @@ std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> ProcessGroupImpl::id(std::share
 
 std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> ProcessGroupImpl::nextGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr) 
 {
-    if (id_ == nullptr) 
-        id_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, NextProcessGroupID));
-    return id_;
+    if (nextGroup_ == nullptr) 
+        nextGroup_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, NextProcessGroupID));
+    return nextGroup_;
 }
 
 std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl> ProcessGroupImpl::prevGroup(std::shared_ptr<ACCCDSLImpl::ProcessGroupImpl> ptr) 
 {
-    if (id_ == nullptr) 
-        id_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, PreviousProcessGroupID));
-    return id_;
+    if (previousGroup_ == nullptr) 
+        previousGroup_ = std::shared_ptr<ACCCDSLImpl::ProcessGroupIDImpl>(new ProcessGroupIDImpl(ptr, PreviousProcessGroupID));
+    return previousGroup_;
 }
 
 Variable ProcessGroup::rank() {return Variable(impl()->rankVar());}
