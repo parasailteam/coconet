@@ -33,18 +33,20 @@ void RS_P2P_C_AG()
     Variable S(Int32, "S");    
     Variable H(Int32, "H");
 
-    Tensor w(Float16, {H,H}, Sliced, "w");
-    Tensor b(Float16, H, Replicated, "b");
-    Tensor in(Float16, {B,S,H}, Sliced_2, "in");
-    Tensor r(Float16, {B,S,H}, Replicated, "r");
+    ProcessGroup group = WORLDGroup.split(2);
+    ProcessGroupID groupid = group.id();
 
-    Stage layer = MatMul(in,w);
-    Stage sumRS = ReduceScatter(Summation, layer);
-    Stage scOut = sumRS + Scatter(r);
-    Stage out = AllGather(scOut);
+    Tensor b(Float16, H, Replicated, "b", groupid);
+    Tensor in(Float16, {B,S,H}, Local, "in", groupid);
+    Tensor r(Float16, {B,S,H}, Replicated, "r", groupid);
 
-    Pipeline pipeline("pipeline-parallel", {w,b,in,r}, {out});
-    
+    Stage sum = ReduceScatter(Summation, in);
+    Stage scSend = Dropout(sum+b, 0.1) - r;
+    Stage scOut = Send(scSend, group.next(), group.rank());
+    Stage output = AllGather(scOut);
+
+    Pipeline pipeline("pipeline-parallel", {b,in,r}, {output});
+
     std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
     pipeline.codegen("pipeline-parallel-rs-p2p-c-ag.cu", varBounds);
 }
