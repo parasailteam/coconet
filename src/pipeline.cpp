@@ -512,11 +512,27 @@ void Pipeline::asSlice(std::vector<std::shared_ptr<TensorImpl>> replicatedInputs
             psAndExpr.first->replaceExpr(psAndExpr.second, replicatedInput);
         }
 
+        //Find the extra allgather node
         for (auto iter : dslStageToPipelineStage) {
             auto stage = iter.first;
             if (stage->definition()->type() == AllGatherNode) {
                 if (stage->definition()->children()[0] == updateStage) {
                     extraAllGather = stage; 
+                    break;
+                }
+            }
+            if (stage->definition()->type() == UpdateNode) {
+                auto updateNode = AstNodeImpl::asUpdateImpl(stage->definition());
+                if (updateNode->arg() == replicatedInput) {
+                    extraAllGather = stage;
+                    //Remove the Update node of this stage by only having AllGather
+                    stage->setDefinition(updateNode->update());
+
+                    //Add the Update node on the input of AllGather
+                    auto ag = AstNodeImpl::asAllGatherImpl(updateNode->update());
+                    auto agInput = AstNodeImpl::asStageImpl(ag->arg());
+                    updateNode->setUpdate(agInput->definition());
+                    agInput->setDefinition(updateNode);
                     break;
                 }
             }
@@ -788,9 +804,19 @@ Pipeline::reorder(std::vector<std::shared_ptr<StageImpl>> comps, std::shared_ptr
         if (liveout->layout() != Sliced)
             continue;
         
-        Stage newAllGather = Stage(AllGather_(liveout));
-        newAllGatherStages.push_back(newAllGather);
-        PipelineStage* newAllGatherPS = createOrGetPipelineStageForDslStage(newAllGather.impl());
+        Stage* newAllGatherPtr;
+        if (liveout->definition()->type() == UpdateNode) {
+            //If liveout is an UpdateNode then UpdateNode takes new AllGather as its update
+            //and UpdateNode's current update becomes stage of its own
+            auto updateNode = AstNodeImpl::asUpdateImpl(liveout->definition());
+            liveout->setDefinition(updateNode->update());
+            newAllGatherPtr = new Stage(Update(Tensor(updateNode->arg()), AllGather_(liveout)));
+        } else {
+            newAllGatherPtr = new Stage(AllGather_(liveout));
+        }
+        
+        newAllGatherStages.push_back(*newAllGatherPtr);
+        PipelineStage* newAllGatherPS = createOrGetPipelineStageForDslStage(newAllGatherPtr->impl());
         
         //Add new AllGather stages after comps in DAG
         PipelineStage* liveoutPS = dslStageToPipelineStage[liveout];
@@ -803,7 +829,7 @@ Pipeline::reorder(std::vector<std::shared_ptr<StageImpl>> comps, std::shared_ptr
             }
             outputs_.push_back(newAllGatherPS);
             stageOutputs_.erase(liveout);
-            stageOutputs_.insert(newAllGather.impl());
+            stageOutputs_.insert(newAllGatherPtr->impl());
         }
 
         //For all Stages outside of reordered comps replace liveouts with their AllGather
@@ -813,11 +839,13 @@ Pipeline::reorder(std::vector<std::shared_ptr<StageImpl>> comps, std::shared_ptr
             newAllGatherPS->addChild(child);
             liveoutPS->removeChild(child);
             child->replaceParent(liveoutPS, newAllGatherPS);
-            child->replaceExpr(liveout, newAllGather.impl());
+            child->replaceExpr(liveout, newAllGatherPtr->impl());
         }
         
         newAllGatherPS->addParent(liveoutPS);
         liveoutPS->addChild(newAllGatherPS);
+
+        delete newAllGatherPtr;
     }
 
     //FIXME: Add existing AllGather if it's output is a liveout.

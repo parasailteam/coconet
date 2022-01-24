@@ -635,6 +635,7 @@ public:
         return newS;
     }
 
+    void setDefinition(std::shared_ptr<ExpressionImpl> newDef) {children_[0] = newDef;}
     std::set<std::shared_ptr<StageImpl>> dependsOnStages()
     {
         std::set<std::shared_ptr<StageImpl>> dependent;
@@ -1067,6 +1068,7 @@ public:
     std::shared_ptr<TensorImpl> arg() {return std::dynamic_pointer_cast<TensorImpl>(children_[0]);}
     std::shared_ptr<ExpressionImpl> update() {return std::dynamic_pointer_cast<ExpressionImpl>(children_[1]);}
     
+    void setUpdate(std::shared_ptr<ExpressionImpl> up) {children_[1] = up;}
     virtual void setupAndCheckDimensions() {
         dimSizes_.clear();
         ASSERT(arg()->dimSizes() == update()->dimSizes(), "Dimensions of argument and update are different.");

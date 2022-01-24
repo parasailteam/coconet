@@ -4205,7 +4205,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                     //Definition of collective communications contains only stage or tensor.
                     case AllReduceNode: {
                         std::shared_ptr<AllReduceImpl> allReduceColl = AstNodeImpl::asAllReduceImpl(stageDef);
-                        funcBody << indent(1) << "ncclAllReduce(" << allReduceColl->arg()->name() << ", " << stageName << ", " << 
+                        auto arg = pipeline_.getExplicitStoreLocation(allReduceColl->arg());
+                        funcBody << indent(1) << "ncclAllReduce(" << arg->name() << ", " << stageName << ", " << 
                             genNumElem(allReduceColl->arg()) << ", " << elemTypeToNCCLType(allReduceColl->arg()->elemType()) << "," << 
                             redOpToNCCLReduceOp(allReduceColl->reduceOp()) << ", " << allReduceColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllReduce";
@@ -4214,7 +4215,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                     }
                     case AllGatherNode: {
                         std::shared_ptr<AllGatherImpl> allGatherColl = AstNodeImpl::asAllGatherImpl(stageDef);
-                        funcBody << indent(1) << "ncclAllGather(" << allGatherColl->arg()->name() << ", " << stageName << ", " << 
+                        auto arg = pipeline_.getExplicitStoreLocation(allGatherColl->arg());
+                        funcBody << indent(1) << "ncclAllGather(" << arg->name() << ", " << stageName << ", " << 
                             genNumElem(allGatherColl->arg()) << ", " << elemTypeToNCCLType(allGatherColl->arg()->elemType()) << 
                             ", " << allGatherColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
                         pipelineStageName = "AllGather";
@@ -4222,7 +4224,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                     }
                     case ReduceScatterNode: {
                         std::shared_ptr<ReduceScatterImpl> reduceScatterColl = AstNodeImpl::asReduceScatterImpl(stageDef);
-                        funcBody << indent(1) << "ncclReduceScatter(" << reduceScatterColl->arg()->name() << ", " << stageName << ", " << 
+                        auto arg = pipeline_.getExplicitStoreLocation(reduceScatterColl->arg());
+                        funcBody << indent(1) << "ncclReduceScatter(" << arg->name() << ", " << stageName << ", " << 
                             genNumElem(reduceScatterColl) << ", " << elemTypeToNCCLType(reduceScatterColl->arg()->elemType()) << 
                             ", " << redOpToNCCLReduceOp(reduceScatterColl->reduceOp()) << ", " <<
                             reduceScatterColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
@@ -4231,7 +4234,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                     }
                     case ReduceNode: {
                         std::shared_ptr<ReduceImpl> reduceColl = AstNodeImpl::asReduceImpl(stageDef);
-                        funcBody << indent(1) << "ncclReduce(" << reduceColl->arg()->name() << ", " << stageName << ", " << 
+                        auto arg = pipeline_.getExplicitStoreLocation(reduceColl->arg());
+                        funcBody << indent(1) << "ncclReduce(" << arg->name() << ", " << stageName << ", " << 
                             genNumElem(reduceColl->arg()) << ", " << elemTypeToNCCLType(reduceColl->arg()->elemType()) << 
                             redOpToNCCLReduceOp(reduceColl->reduceOp()) << ", " << reduceColl->root() << ", " <<
                             reduceColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
@@ -4240,7 +4244,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                     }
                     case BroadcastNode: {
                         std::shared_ptr<BroadcastImpl> broadcastColl = AstNodeImpl::asBroadcastImpl(stageDef);
-                        funcBody << indent(1) << "ncclBroadcast(" << broadcastColl->arg()->name() << ", " << stageName << ", " << 
+                        auto arg = pipeline_.getExplicitStoreLocation(broadcastColl->arg());
+                        funcBody << indent(1) << "ncclBroadcast(" << arg->name() << ", " << stageName << ", " << 
                             genNumElem(broadcastColl->arg()) << ", " << elemTypeToNCCLType(broadcastColl->arg()->elemType()) << 
                             ", " << broadcastColl->root() << ", " <<
                             broadcastColl->arg()->group()->group()->ncclCommVar()->name() << ", " << streamArg << ");" << std::endl;
@@ -4254,7 +4259,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         static int send_count = 0;
 
                         std::shared_ptr<SendImpl> send = AstNodeImpl::asSendImpl(stageDef);
-                        
+                        auto arg = pipeline_.getExplicitStoreLocation(send->arg());
+
                         std::stringstream binopCodeStream;
                         PointwiseOpCodegen binOpCodegen(binopCodeStream, pipelineStage, pipeline_, false, false, CodeType::CUDA);
                         binOpCodegen.print(*send->dstRank());
@@ -4283,7 +4289,7 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                         }
 
                         std::stringstream ncclSendCall;
-                        ncclSendCall << "(" << send->arg()->name() << ", " << 
+                        ncclSendCall << "(" << arg->name() << ", " << 
                             genNumElem(send->arg()) << ", " << elemTypeToNCCLType(send->arg()->elemType()) << 
                             ", " << sendDSTVar << ", " << ncclComm << ", " << streamArg << ")";
 

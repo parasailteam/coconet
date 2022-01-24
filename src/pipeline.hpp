@@ -544,7 +544,13 @@ namespace ACCCDSL {
             return false;
         }
         const std::unordered_map<std::shared_ptr<StageImpl>, std::shared_ptr<ExpressionImpl>>& explicitStoreLocations() {return explicitStoreLocations_;}
-
+        std::shared_ptr<ExpressionImpl> getExplicitStoreLocation(std::shared_ptr<ExpressionImpl> s) {
+            if (s->type() != StageNode)
+                return s;
+            if (explicitStoreLocations_.count(AstNodeImpl::asStageImpl(s)) > 1)
+                return explicitStoreLocations_[AstNodeImpl::asStageImpl(s)];
+            return s;
+        }
         void createDAG();
         
         /**Transformations**/
