@@ -585,7 +585,11 @@ void Pipeline::asSlice(std::vector<std::shared_ptr<TensorImpl>> replicatedInputs
 
         //Recreate Topological Order
         createTopologicalSort();
+
+        dslStageToPipelineStage.erase(extraAllGather);
     }
+
+    
 }
 
 void Pipeline::updateExplicitStorageLocations()
@@ -852,7 +856,9 @@ Pipeline::reorder(std::vector<std::shared_ptr<StageImpl>> comps, std::shared_ptr
     //Recreate Topological Order
     createTopologicalSort();
 
-    
+    dslStageToPipelineStage.erase(allGather);
+    delete allGatherPS;
+
     return std::make_pair(comps, dslToAstImpls<Stage, StageImpl>(newAllGatherStages));
 }
 
@@ -912,6 +918,10 @@ std::pair<std::shared_ptr<StageImpl>, std::shared_ptr<StageImpl>> Pipeline::spli
     
     //Recreate topological order
     createTopologicalSort();
+
+    dslStageToPipelineStage.erase(stageImpl);
+    
+    delete allReducePS;
 
     return std::make_pair(reduceScatter.impl(), allGather.impl());
 }

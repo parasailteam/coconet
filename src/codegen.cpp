@@ -4138,8 +4138,9 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     std::vector<CFunc> subFunctions;
     std::vector<IntermediateStage> intermediateStages;
     std::unordered_map<PipelineStage*, std::pair<std::string, std::string>> psToNameAndTimeVar;
+    
     pipeline_.setAllStageStoreLoc();
-
+    
     const std::string startEvent = "start" + pipeline_.name();
     const std::string stopEvent = "stop" + pipeline_.name();
     const std::string elapsedTimeVar = "elapsedTime";
