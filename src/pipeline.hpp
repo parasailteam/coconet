@@ -525,7 +525,6 @@ namespace ACCCDSL {
             }
 
             createDAG();
-            updateExplicitStorageLocations();
         }
 
         std::vector<PipelineStage*> inputs() {return inputs_;}
@@ -663,6 +662,7 @@ namespace ACCCDSL {
             std::ofstream outputFile;
             outputFile.open(filename);
             if (outputFile.is_open()) {
+                updateExplicitStorageLocations();
                 codegen(outputFile, varBounds);
                 outputFile.close();
             } else {

@@ -871,10 +871,11 @@ std::pair<std::shared_ptr<StageImpl>, std::shared_ptr<StageImpl>> Pipeline::spli
     auto reduceOp = allReduceImpl->reduceOp();
 
     
-    Tensor allReduceInputAsTensor = Tensor(AstNodeImpl::asTensorImpl(allReduceImpl->arg()));
-    Stage allReduceInputAsStage = Stage(allReduceImpl->arg());
-    Stage reduceScatter = ReduceScatter(reduceOp, (allReduceImpl->arg()->type() == TensorNode) ? 
-                                                   allReduceInputAsTensor :  allReduceInputAsStage);
+    auto allReduceInputAsTensor = AstNodeImpl::asTensorImpl(allReduceImpl->arg());
+    auto allReduceInputAsStage =  AstNodeImpl::asStageImpl(allReduceImpl->arg());
+    auto rsImpl = (allReduceImpl->arg()->type() == TensorNode) ? std::shared_ptr<ReduceScatterImpl>(new ReduceScatterImpl(allReduceInputAsTensor, reduceOp)) :
+                                                                 std::shared_ptr<ReduceScatterImpl>(new ReduceScatterImpl(allReduceInputAsStage, reduceOp));
+    Stage reduceScatter = std::shared_ptr<StageImpl>(new StageImpl(rsImpl));
     Stage allGather = AllGather(reduceScatter);
 
     /*******Update AST:*********/
