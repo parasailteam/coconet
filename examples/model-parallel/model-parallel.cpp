@@ -27,7 +27,7 @@ void MM_AR_C()
     pipeline.codegen("model-parallel-mm-ar-c.cu", varBounds);
 }
 
-void MM_RS_C_AG()
+void MM_RS_C_AG() 
 {
     Variable B(Int32, "B");
     Variable S(Int32, "S");    
@@ -39,17 +39,42 @@ void MM_RS_C_AG()
     Tensor r(Float16, {B,S,H}, Replicated, "r");
 
     Stage layer = MatMul(in,w);
-    Stage sumRS = ReduceScatter(Summation, layer);
-    Stage sum2 = sumRS + b;
-    Stage scOut = Dropout(sum2, 0.5) + Scatter(r);
-    Stage out = AllGather(scOut);
-
-    Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
+    Stage sum = AllReduce(Summation, layer);
+    Stage sum2 = sum + b;
+    Stage out = Dropout(sum2, 0.5) + r;
     
-    // pipeline.fuse({sum2, scOut});
+    Pipeline pipeline("model_parallel", {w,b,in,r}, {out});
+    auto rsAg = pipeline.split(sum, AllReduceRSAG);
+    auto reordered = pipeline.reorder({sum2, out}, rsAg.second);
+    // pipeline.fuse(reordered.compStages);
+    
     std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
-    pipeline.codegen("model-parallel-mm-rs-c-ag.cu", varBounds);
+    pipeline.codegen("model-parallel-mm-ar-c.cu", varBounds);
 }
+
+// void MM_RS_C_AG()
+// {
+//     Variable B(Int32, "B");
+//     Variable S(Int32, "S");    
+//     Variable H(Int32, "H");
+
+//     Tensor w(Float16, {H,H}, Sliced, "w");
+//     Tensor b(Float16, H, Replicated, "b");
+//     Tensor in(Float16, {B,S,H}, Sliced_2, "in");
+//     Tensor r(Float16, {B,S,H}, Replicated, "r");
+
+//     Stage layer = MatMul(in,w);
+//     Stage sumRS = ReduceScatter(Summation, layer);
+//     Stage sum2 = sumRS + b;
+//     Stage scOut = Dropout(sum2, 0.5) + Scatter(r);
+//     Stage out = AllGather(scOut);
+
+//     Pipeline pipeline("model-parallel", {w,b,in,r}, {out});
+    
+//     // pipeline.fuse({sum2, scOut});
+//     std::vector<CodeGenVarBounds> varBounds = {CodeGenVarBounds(B, {8, 16}), CodeGenVarBounds(S, {1024}), CodeGenVarBounds(H, {3072})};
+//     pipeline.codegen("model-parallel-mm-rs-c-ag.cu", varBounds);
+// }
 
 void ol_MM_fuse_RS_C_AG()
 {
