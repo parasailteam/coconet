@@ -302,7 +302,7 @@ public:
     
     bool scattered() {return layout_ == Sliced;}
     virtual void setupAndCheckDimensions() = 0;
-    std::string name() {return name_;}
+    virtual std::string name() {return name_;}
     virtual void accept(AstVisitor& v) = 0;
     virtual TensorLayout layout () {return layout_;}
     virtual size_t dims() {return dimSizes_.size();}
@@ -881,6 +881,10 @@ public:
         dimSizes_.clear();
         elemType_ = arg()->elemType();
         layout_ = Sliced;
+    }
+
+    std::string name() { 
+        return arg()->name();
     }
 };
 

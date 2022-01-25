@@ -523,7 +523,7 @@ void Pipeline::asSlice(std::vector<std::shared_ptr<TensorImpl>> replicatedInputs
             }
             if (stage->definition()->type() == UpdateNode) {
                 auto updateNode = AstNodeImpl::asUpdateImpl(stage->definition());
-                if (updateNode->arg() == replicatedInput) {
+                if (updateNode->arg() == replicatedInput && updateNode->update()->type() == AllGatherNode) {
                     extraAllGather = stage;
                     //Remove the Update node of this stage by only having AllGather
                     stage->setDefinition(updateNode->update());
