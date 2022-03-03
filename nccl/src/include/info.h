@@ -1,5 +1,5 @@
 /*************************************************************************
- * Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2019-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * See LICENSE.txt for license information
  ************************************************************************/
@@ -8,7 +8,7 @@
 #define NCCL_INFO_H_
 
 #include "nccl.h"
-#include "core.h"
+#include "devcomm.h"
 
 typedef enum {
   ncclPatternRing,
@@ -21,18 +21,6 @@ typedef enum {
   ncclPatternCollTreeUp,
   ncclPatternCollTreeDown
 } ncclPattern_t;
-
-struct ncclFusedComputationParams {
-  float lr;
-float beta1;
-float beta2;
-half* g;
-float* w;
-half* halfw;
-float* m;
-float* v;
-float* r;
-};
 
 // Used to pass NCCL call information between functions
 struct ncclInfo {
@@ -50,7 +38,6 @@ struct ncclInfo {
   // Algorithm details
   int chunkSteps;
   int sliceSteps;
-  ncclFusedComputationParams fusedComputation;
   // Computed later
   int algorithm;
   int protocol;
@@ -60,6 +47,10 @@ struct ncclInfo {
   size_t nBytes;
   int nstepsPerLoop;
   int nchunksPerLoop;
+  ssize_t sendbytes;
+  ssize_t recvbytes;
+  uint32_t delta;
+  int channelId;
 };
 
 #endif

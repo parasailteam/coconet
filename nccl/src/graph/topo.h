@@ -12,11 +12,15 @@
 #include <sched.h>
 
 #define LOC_WIDTH 5000.0
-#define PASCAL_NVLINK_WIDTH 18.0
-#define VOLTA_NVLINK_WIDTH 21.0
+#define SM60_NVLINK_WIDTH 18.0
+#define SM70_NVLINK_WIDTH 21.0
+#define SM80_NVLINK_WIDTH 21.0
+#define SM86_NVLINK_WIDTH 12.0
 #define PCI_WIDTH 12.0           // PCI Gen3 x16
 #define QPI_WIDTH 6.0
 #define SKL_QPI_WIDTH 9.0
+#define ZPI_WIDTH 6.0
+#define YONGFENG_ZPI_WIDTH 9.0
 #define P9_WIDTH 32.0
 #define ARM_WIDTH 6.0
 #define NET_WIDTH 12.0           // 100Gbit
@@ -38,20 +42,21 @@ extern const char* topoNodeTypeStr[];
 // We want link types and path types to match as much as possible
 #define LINK_LOC 0
 #define LINK_NVL 1
-#define LINK_PCI 2
-// Skipping 3 for PATH_PXB
-// Skipping 4 for PATH_PHB
-#define LINK_SYS 5
-#define LINK_NET 6
+// Skipping 2 for PATH_NVB
+#define LINK_PCI 3
+// Skipping 4 for PATH_PXB
+// Skipping 5 for PATH_PHB
+#define LINK_SYS 6
+#define LINK_NET 7
 extern const char* topoLinkTypeStr[];
 
 #define PATH_LOC 0
 #define PATH_NVL 1
-#define PATH_PIX 2
-#define PATH_PXB 3
-#define PATH_PHB 4
-#define PATH_SYS 5
-#define PATH_NET 6
+#define PATH_NVB 2
+#define PATH_PIX 3
+#define PATH_PXB 4
+#define PATH_PHB 5
+#define PATH_SYS 6
 extern const char* topoPathTypeStr[];
 
 struct ncclTopoNode;
@@ -117,6 +122,7 @@ struct ncclTopoNodeSet {
 struct ncclTopoSystem {
   struct ncclTopoNodeSet nodes[NCCL_TOPO_NODE_TYPES];
   float maxWidth;
+  float totalWidth;
 };
 
 ncclResult_t ncclTopoGetNode(struct ncclTopoSystem* system, struct ncclTopoNode** node, int type, uint64_t id);
@@ -126,9 +132,13 @@ ncclResult_t ncclTopoConnectNodes(struct ncclTopoNode* node, struct ncclTopoNode
 ncclResult_t ncclTopoPrintPaths(struct ncclTopoSystem* system);
 ncclResult_t ncclTopoLoadSystem(const char* xmlTopoFile, struct ncclTopoSystem* system);
 
+ncclResult_t ncclTopoGetLocalNet(struct ncclTopoSystem* system, int rank, int64_t* id, int rr);
+
 ncclResult_t ncclTopoGetSystemFromXml(struct ncclXml* xml, struct ncclTopoSystem** topoSystem);
-ncclResult_t ncclTopoGetGraphFromXml(struct ncclXmlNode *xmlGraphs, struct ncclTopoSystem* system, struct ncclTopoGraph* graph);
+ncclResult_t ncclTopoGetGraphFromXml(struct ncclXmlNode *xmlGraphs, struct ncclTopoSystem* system, struct ncclTopoGraph* graph, int* nChannels);
 ncclResult_t ncclTopoGetXmlFromGraphs(int ngraphs, struct ncclTopoGraph** graphs, struct ncclTopoSystem* system, struct ncclXml *xml);
+
+ncclResult_t ncclTopoGetCompCap(struct ncclTopoSystem* system, int* ccMin, int* ccMax);
 
 static ncclResult_t ncclTopoIdToIndex(struct ncclTopoSystem* system, int type, int64_t id, int* index) {
   *index = -1;
@@ -141,4 +151,24 @@ static ncclResult_t ncclTopoIdToIndex(struct ncclTopoSystem* system, int type, i
   return ncclInternalError;
 }
 
+static ncclResult_t ncclTopoRankToIndex(struct ncclTopoSystem* system, int rank, int* index) {
+  *index = -1;
+  for (int i=0; i<system->nodes[GPU].count; i++) {
+    if (system->nodes[GPU].nodes[i].gpu.rank == rank) {
+      *index = i;
+      return ncclSuccess;
+    }
+  }
+  return ncclInternalError;
+}
+
+// Returns NVLink speed in GB/s
+static float ncclTopoNVLinkSpeed(int cudaCompCap) {
+  return
+    cudaCompCap == 86 ? SM86_NVLINK_WIDTH :
+    cudaCompCap >= 80 ? SM80_NVLINK_WIDTH :
+    cudaCompCap >= 70 ? SM70_NVLINK_WIDTH :
+    cudaCompCap >= 60 ? SM60_NVLINK_WIDTH :
+    SM80_NVLINK_WIDTH;
+}
 #endif

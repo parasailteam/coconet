@@ -67,10 +67,10 @@ ncclResult_t getHostName(char* hostname, int maxlen, const char delim) {
 }
 
 uint64_t getHash(const char* string, int n) {
-  // Based on DJB2, result = result * 33 + char
+  // Based on DJB2a, result = result * 33 ^ char
   uint64_t result = 5381;
   for (int c = 0; c < n; c++) {
-    result = ((result << 5) + result) + string[c];
+    result = ((result << 5) + result) ^ string[c];
   }
   return result;
 }
@@ -93,6 +93,7 @@ uint64_t getHostHash(void) {
   int offset = strlen(hostHash);
 
   if ((hostId = getenv("NCCL_HOSTID")) != NULL) {
+    INFO(NCCL_ENV, "NCCL_HOSTID set by environment to %s", hostId);
     strncpy(hostHash, hostId, sizeof(hostHash));
   } else {
     FILE *file = fopen(HOSTID_FILE, "r");

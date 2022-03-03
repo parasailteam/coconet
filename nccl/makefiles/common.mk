@@ -11,6 +11,7 @@ KEEP ?= 0
 DEBUG ?= 0
 TRACE ?= 0
 PROFAPI ?= 0
+NVTX ?= 1
 
 NVCC = $(CUDA_HOME)/bin/nvcc
 
@@ -23,19 +24,24 @@ CUDA_MINOR = $(shell echo $(CUDA_VERSION) | cut -d "." -f 2)
 #$(info CUDA_VERSION ${CUDA_MAJOR}.${CUDA_MINOR})
 
 
-# Better define NVCC_GENCODE in your environment to the minimal set
+# You should define NVCC_GENCODE in your environment to the minimal set
 # of archs to reduce compile time.
 CUDA8_GENCODE = -gencode=arch=compute_35,code=sm_35 \
                 -gencode=arch=compute_50,code=sm_50 \
                 -gencode=arch=compute_60,code=sm_60 \
                 -gencode=arch=compute_61,code=sm_61
 CUDA9_GENCODE = -gencode=arch=compute_70,code=sm_70
+CUDA11_GENCODE = -gencode=arch=compute_80,code=sm_80
 
 CUDA8_PTX     = -gencode=arch=compute_61,code=compute_61
 CUDA9_PTX     = -gencode=arch=compute_70,code=compute_70
+CUDA11_PTX    = -gencode=arch=compute_80,code=compute_80
 
+# Include Ampere support if we're using CUDA11 or above
+ifeq ($(shell test "0$(CUDA_MAJOR)" -ge 11; echo $$?),0)
+  NVCC_GENCODE ?= $(CUDA8_GENCODE) $(CUDA9_GENCODE) $(CUDA9_PTX) $(CUDA11_GENCODE) $(CUDA11_PTX)
 # Include Volta support if we're using CUDA9 or above
-ifeq ($(shell test "0$(CUDA_MAJOR)" -gt 8; echo $$?),0)
+else ifeq ($(shell test "0$(CUDA_MAJOR)" -ge 9; echo $$?),0)
   NVCC_GENCODE ?= $(CUDA8_GENCODE) $(CUDA9_GENCODE) $(CUDA9_PTX)
 else
   NVCC_GENCODE ?= $(CUDA8_GENCODE) $(CUDA8_PTX)
@@ -51,14 +57,14 @@ CXXFLAGS   := -DCUDA_MAJOR=$(CUDA_MAJOR) -DCUDA_MINOR=$(CUDA_MINOR) -fPIC -fvisi
 # We would not have to set this if we used __launch_bounds__, but this only works on kernels, not on functions.
 NVCUFLAGS  := -ccbin $(CXX) $(NVCC_GENCODE) -std=c++11 -Xptxas -maxrregcount=96 -Xfatbin -compress-all
 # Use addprefix so that we can specify more than one path
-NVLDFLAGS  := -L${CUDA_LIB} -lcudart -lrt -lcudadevrt -dlink
+NVLDFLAGS  := -L${CUDA_LIB} -lcudart -lrt
 
 ########## GCOV ##########
 GCOV ?= 0 # disable by default.
 GCOV_FLAGS := $(if $(filter 0,${GCOV} ${DEBUG}),,--coverage) # only gcov=1 and debug =1
-CXXFLAGS  += ${GCOV_FLAGS} -lcudadevrt -lcudart
+CXXFLAGS  += ${GCOV_FLAGS}
 NVCUFLAGS += ${GCOV_FLAGS:%=-Xcompiler %}
-LDFLAGS   += ${GCOV_FLAGS} -lcudadevrt -lcudart
+LDFLAGS   += ${GCOV_FLAGS}
 NVLDFLAGS   += ${GCOV_FLAGS:%=-Xcompiler %}
 # $(warning GCOV_FLAGS=${GCOV_FLAGS})
 ########## GCOV ##########
@@ -80,6 +86,10 @@ endif
 
 ifneq ($(TRACE), 0)
 CXXFLAGS  += -DENABLE_TRACE
+endif
+
+ifeq ($(NVTX), 0)
+CXXFLAGS  += -DNVTX_DISABLE
 endif
 
 ifneq ($(KEEP), 0)

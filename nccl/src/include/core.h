@@ -1,5 +1,5 @@
 /*************************************************************************
- * Copyright (c) 2015-2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2015-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * See LICENSE.txt for license information
  ************************************************************************/
@@ -50,23 +50,11 @@ static __inline__ int ncclTypeSize(ncclDataType_t type) {
   }
 }
 
-#define NCCL_NUM_FUNCTIONS 6
-typedef enum { ncclCollBroadcast, ncclCollReduce, ncclCollAllGather, ncclCollReduceScatter, ncclCollAllReduce, ncclCollAllReduceComputation } ncclFunc_t;
-
-#define NCCL_NUM_ALGORITHMS 3 // Tree/Ring/CollNet
-#define NCCL_ALGO_TREE 0
-#define NCCL_ALGO_RING 1
-#define NCCL_ALGO_COLLNET 2
-
-#define NCCL_NUM_PROTOCOLS 3 // Simple/LL/LL128
-#define NCCL_PROTO_LL 0
-#define NCCL_PROTO_LL128 1
-#define NCCL_PROTO_SIMPLE 2
-
 #include "debug.h"
 #include "checks.h"
 #include "alloc.h"
 #include "utils.h"
 #include "param.h"
+#include "nvtx.h"
 
 #endif // end include guard

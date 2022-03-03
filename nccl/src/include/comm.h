@@ -8,6 +8,7 @@
 #define NCCL_COMM_H_
 
 #include "transport.h"
+#include "p2p.h"
 
 #if CUDART_VERSION < 9000
 struct cudaLaunchParams {
@@ -36,10 +37,10 @@ struct ncclSendMem {
       char pad1[CACHE_LINE_SIZE-sizeof(uint64_t)];
       void* ptrExchange;
       char pad2[CACHE_LINE_SIZE-sizeof(void*)];
-      uint64_t opCount;
     };
     char pad3[MEM_ALIGN];
   };
+  char buff[1]; // Actually larger than that
 };
 
 struct ncclRecvMem {
@@ -47,14 +48,11 @@ struct ncclRecvMem {
     struct {
       uint64_t tail;
       char pad1[CACHE_LINE_SIZE-sizeof(uint64_t)];
-      uint64_t opCount;
-      char pad2[CACHE_LINE_SIZE-sizeof(uint64_t)];
       int sizesFifo[NCCL_STEPS];
+      void* ptrsFifo[NCCL_STEPS];
     };
     char pad4[MEM_ALIGN];
   };
-  ncclLLFifoLine llBuff[NCCL_LL_BUFF_LINES];
-  uint64_t ll128Buff[NCCL_LL128_BUFF_ELEMS];
   char buff[1]; // Actually larger than that
 };
 
@@ -65,6 +63,10 @@ struct ncclComm {
   struct ncclTopoSystem* topo;
 
   void* bootstrap;
+  // Bitmasks for ncclTransportP2pSetup
+  int connect;
+  uint32_t* connectSend;
+  uint32_t* connectRecv;
 
   int rank;    // my rank in the communicator
   int nRanks;  // number of GPUs in communicator
@@ -88,6 +90,13 @@ struct ncclComm {
 
   // Channels for collectives
   int nChannels;
+  // Channels (per peer) for p2p
+  int p2pnChannels;
+  int p2pnChannelsPerPeer;
+  int p2pChannels[MAXCHANNELS];
+
+  // Buffer sizes
+  int buffSizes[NCCL_NUM_PROTOCOLS];
 
   // Algorithm/Protocols thresholds
   ssize_t threadThresholds[NCCL_NUM_ALGORITHMS][NCCL_NUM_PROTOCOLS];
@@ -101,9 +110,6 @@ struct ncclComm {
 
   // Whether there has been a fatal error in this communicator.
   ncclResult_t fatalError;
-
-  // Error reported by GPU
-  volatile ncclDevError_t* fatalDevError;
 
   // Flag to ask NCCL kernels to abort
   volatile uint32_t *abortFlag;
@@ -125,7 +131,7 @@ struct ncclComm {
   int* intraCudaDevs;
   int* intraCGMode; // Whether we can use CUDA9 CGMD or not
   int* intraCC; // Only to check all have the same ComputeCap and disable CGMode if not
-  struct ncclColl args;
+  struct ncclWorkElem args;
   void* argsptr;
 
   // Global proxy thread
@@ -134,6 +140,17 @@ struct ncclComm {
 
   // Whether this communicator uses collNet
   int collNetSupport;
+
+  // Store info of async operations
+  struct ncclInfo* asyncOps;
+  int asyncOpCount;
+  size_t asyncTotalSize;
+
+  //list of async p2p operation queued in a group semantics
+  struct ncclP2Plist* p2pSends;
+  struct ncclP2Plist* p2pRecvs;
+  int p2pSendCount;
+  int p2pRecvCount;
 };
 
 #endif
