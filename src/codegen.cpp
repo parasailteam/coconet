@@ -4076,6 +4076,9 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     const std::string streamArg = "stream";
     const std::string ncclCommTy = "ncclComm_t";
     const std::string streamTy = "cudaStream_t";
+    const std::string cutlasHandleTy = "Gemm";
+    const std::string cutlasVar = "gemm_op";
+    const std::string cutlassStreamVar = "cutlassStream";
 
     std::vector<ArrayDecl> arrayDecls;
     std::stringstream funcBody;
@@ -4097,7 +4100,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
     
     bool hasACommCollStage = false;
     bool useCUBLAS = false;
-
+    bool useCUTLAS = false;
+    
     //Generate code in a topological sort manner
     for (auto pipelineStage : pipeline_.topoOrder()) {
         std::string stageName;
@@ -4262,17 +4266,20 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 }
                 
                 ASSERT(matmulStage != nullptr, "");
-                CFunc cfunc = generateCUBLASMatMul(pipeline_, matmulStage, AstNodeImpl::asMatMulImpl(matmulStage->definition()));
-                subFunctions.push_back(cfunc);
-                useCUBLAS = true;
+                // CFunc cfunc = generateCUBLASMatMul(pipeline_, matmulStage, AstNodeImpl::asMatMulImpl(matmulStage->definition()));
+                // subFunctions.push_back(cfunc);
+                useCUBLAS = false;
+                useCUTLAS = true;
                 intermediateStages.push_back({matmulStage, true});
                 
-                funcBody << genCUDAFuncCall(matmulStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                // funcBody << genCUDAFuncCall(matmulStage, cfunc, streamArg, 1)<<";"<<std::endl;
+                funcBody << indent(1) << "NCCLCHECK(ncclAllReduceOverlapMatMul(in, w, S0, tileStatusMap, B*S*H, B*S, H, DIVUP(H, comm_size), 512, iter, ncclHalf, ncclSum, comm, stream));\n" << std::endl;
+                funcBody << indent(1) << "CUTLASS_CHECK(" << cutlasVar << "(iter, " << cutlassStreamVar << "));\n";
                 std::shared_ptr<ReduceScatterImpl> rsStageDef = AstNodeImpl::asReduceScatterImpl(rsStage->definition());
                 std::shared_ptr<AllGatherImpl> agStageDef = AstNodeImpl::asAllGatherImpl(agStage->definition());
-                funcBody << indent(1) << "ncclAllReduce(" << rsStageDef->arg()->name() << ", " << agStage->name() << ", " << 
-                            genNumElem(agStageDef) << ", " << elemTypeToNCCLType(rsStageDef->arg()->elemType()) << "," << 
-                            redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
+                // funcBody << indent(1) << "ncclAllReduce(" << rsStageDef->arg()->name() << ", " << agStage->name() << ", " << 
+                //             genNumElem(agStageDef) << ", " << elemTypeToNCCLType(rsStageDef->arg()->elemType()) << "," << 
+                //             redOpToNCCLReduceOp(rsStageDef->reduceOp()) << ", " << commArg << ", " << streamArg << ");" << std::endl;
             } else {
                 for (auto outStage : pipelineStage->stages()) {
                     std::shared_ptr<ExpressionImpl> stageDef = outStage->definition();
@@ -4322,6 +4329,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
         std::stringstream headers;
 
         headers << "#include \"header.h\"" << std::endl;
+        if (pipeline_.name() == "model_parallel")
+            headers << "#include \"cutlass-matmul.h\"" << std::endl;
         os_ << headers.str();
     }
 
@@ -4373,7 +4382,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
 
     if (useCUBLAS)
         os_ << ", " << cublasHandleTy << " " << cublasHandleVar;
-
+    if (useCUTLAS)
+        os_ << ", " << cutlasHandleTy << "& " << cutlasVar << ", " << "int iter, int* tileStatusMap" << ", " << streamTy << " " << cutlassStreamVar;
     os_ << ")";
     /*Function body*/
     os_ << "{";
@@ -4598,6 +4608,10 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             mainFunc << mpiStartCode << "  " << epochDecl << streamDecl;
             if (useCUBLAS)
                 mainFunc << cublasHandleDecl << std::endl;
+            if (useCUTLAS) {
+                mainFunc << indent(1) << streamTy << " " << cutlassStreamVar << ";" << std::endl;
+                mainFunc << indent(1) << "cudaStreamCreate(&" << cutlassStreamVar << ");" << std::endl;
+            }
             mainFunc << indent(1) << mpibarrier << std::endl;
             int indentLevel = 1;
             
@@ -4668,6 +4682,12 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
                 mainFunc << indent(indentLevel) << "float " << iter.second.second << " = 0;" << std::endl;
             }
 
+            const std::string cutlasDecl = indent(2) + cutlasHandleTy + " "  + cutlasVar + ";\n" + 
+                                           indent(2) + "int* threadBlockToTileMap;" + "int* tileIdx;" + "int* tileStatusMap;" + "int* chunksForTile;\n" +
+                                           indent(2) + "getCutlassGemm(&comm, gemm_op, B*S, H, DIVUP((H), comm_size), in, w, S0, threadBlockToTileMap, tileIdx, tileStatusMap, chunksForTile, comm_size, rank);\n";
+            if (useCUTLAS)
+                mainFunc << cutlasDecl << std::endl;
+
             //Start epochs loop
             mainFunc << indent(indentLevel) << iterLoop;
             mainFunc << deviceToHostTransfers.str();
@@ -4689,6 +4709,8 @@ void ACCCDSLImpl::NCCLCodegen::codegen(std::vector<CodeGenVarBounds> varBounds)
             mainFunc << commArg << ", " << streamArg << ", " << commSizeArg << ", " << rankVar;
             if (useCUBLAS)
                 mainFunc << ", " << cublasHandleVar;
+            if (useCUTLAS)
+                mainFunc << ", " << cutlasVar << ", " << "iter, tileStatusMap" << ", " << cutlassStreamVar;
             mainFunc << "); "<< std::endl;
             
             //Add mpiref function call
