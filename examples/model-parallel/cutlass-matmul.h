@@ -13,7 +13,7 @@
 
 #include <set>
 #include <vector>
-
+#include <map>
 
 #define ROUNDUP(x, y) \
     (DIVUP((x), (y))*(y))
@@ -178,7 +178,6 @@ std::vector<std::vector<std::tuple<int, int, int, int>>> getChunkBlocks
         int chunkCols;
         chunkCols = realChunkCols;
         nelem = chunkCols * chunkRows;
-
         chunkBlocks[chunkBlocks.size() - 1].push_back(std::make_tuple(chunkStartRow, chunkStartCol, chunkRows, chunkCols));
       }
     }
@@ -190,7 +189,7 @@ std::vector<std::vector<std::tuple<int, int, int, int>>> getChunkBlocks
 #define MAX_CHANNELS 80
 
 #include "header.h"
-void getCutlassGemm(ncclComm_t comm, Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half* m1m2, int*& threadBlockToTileMap, int*& tileIdx, int*& tileStatusMap, int*& chunksForTile, int comm_size, int rank)
+void getCutlassGemm(ncclComm_t* comm, Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half* m1m2, int*& threadBlockToTileMap, int*& tileIdx, int*& tileStatusMap, int*& chunksForTile, int comm_size, int rank)
 {
   int ringLength;
   int nChannels;
@@ -198,8 +197,16 @@ void getCutlassGemm(ncclComm_t comm, Gemm& gemm_op, int M, int N, int K, half* m
   int chunkCols = 512;
   assert(N % chunkCols == 0);
   int* rings = new int[MAX_CHANNELS * comm_size];
-  getNCCLRing(&comm, rings, ringLength, nChannels);
-
+  getNCCLRing(comm, rings, ringLength, nChannels);
+  for (int _rank = 0; _rank < comm_size; _rank++) {
+    if (_rank != rank) continue;
+    std::cout << "rank: " << rank << ":";
+    for (int i = 0; i < ringLength; i++) {
+      std::cout << rings[i] << "->";
+    }
+    std::cout << std::endl;
+  }
+  
   std::vector<std::vector<std::tuple<int, int, int, int>>> chunkBlocks = getChunkBlocks<half>(rank, M*N, comm_size, rings, M, N, chunkCols, chunkRows);
 
     //Overlapped AllReduce + CUTLASS
@@ -324,7 +331,7 @@ void getCutlassGemm(ncclComm_t comm, Gemm& gemm_op, int M, int N, int K, half* m
           hChunksForTile[it.first * maxChunksForTile + i] = -1;
         }
       }
-
+      
       int _idx = 0;
       for (int i = 0; i < tileOrderAsPair.size(); i++) {
         tileOrder[_idx] = tileOrderAsPair[i].second; //Swap because x ("m") is row and y ("n") is column.
@@ -333,7 +340,7 @@ void getCutlassGemm(ncclComm_t comm, Gemm& gemm_op, int M, int N, int K, half* m
         // printf("%d %d\n", tileOrder[_idx], tileOrder[_idx + 1]);
         _idx += 2;
         idx += 2;
-      }    
+      }
     }
     
     CUDACHECK(cudaMemcpy(threadBlockToTileMap, tileOrder, numTiles * 2 * sizeof(int), cudaMemcpyHostToDevice));
