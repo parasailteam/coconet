@@ -9,11 +9,56 @@
 #include "cutlass/util/reference/host/tensor_fill.h"
 #include "cutlass/util/tensor_view_io.h"
 #include "cutlass/tensor_ref.h"
-
 #include "helper.h"
 
 #include <set>
 #include <vector>
+
+
+#define ROUNDUP(x, y) \
+    (DIVUP((x), (y))*(y))
+
+#define ALIGN_SIZE(size, align) \
+  size = ((size + (align) - 1) / (align)) * (align);
+
+#define WARP_SIZE 32
+#define MAXCHANNELS 32
+#define NCCL_MAX_NTHREADS 512
+#define NCCL_LL_MAX_NTHREADS NCCL_MAX_NTHREADS
+#define NCCL_LL_LINES_PER_THREAD 8
+#define NCCL_LL_SLICE_LINES (NCCL_LL_LINES_PER_THREAD*NCCL_LL_MAX_NTHREADS)
+#define NCCL_LL_BUFF_LINES (NCCL_LL_SLICE_LINES*NCCL_STEPS)
+#define NCCL_LL_BUFF_SIZE (NCCL_LL_BUFF_LINES*sizeof(union ncclLLFifoLine))
+
+#define NCCL_LL128_LINESIZE 128
+#define NCCL_LL128_LINEELEMS (NCCL_LL128_LINESIZE/sizeof(uint64_t))
+#define NCCL_LL128_DATAELEMS (NCCL_LL128_LINEELEMS-1)
+
+#define NCCL_LL128_MAX_NTHREADS 640
+#define NCCL_LL128_ELEMS_PER_THREAD 120
+
+// Receiving from up to 3 sources is more compute intensive than sending
+// to 3 dests. Use 70% for reduce and 30% for bcast.
+#define NCCL_LL128_SPLIT(nt) ((nt*7/(10*32))*32)
+
+#define NCCL_LL128_SLICE_ELEMS (NCCL_LL128_ELEMS_PER_THREAD*NCCL_LL128_MAX_NTHREADS)
+#define NCCL_LL128_BUFF_ELEMS (NCCL_LL128_SLICE_ELEMS*NCCL_STEPS)
+#define NCCL_LL128_BUFF_SIZE (NCCL_LL128_BUFF_ELEMS*sizeof(uint64_t))
+
+#define NCCL_LL128_SHMEM_ELEMS_PER_THREAD 8
+#define NCCL_LL128_SHMEM_SIZE (NCCL_LL128_SHMEM_ELEMS_PER_THREAD*NCCL_LL128_MAX_NTHREADS)
+
+#define NCCL_STEPS 8
+#define ALLREDUCE_SLICESTEPS (NCCL_STEPS/4)
+#define ALLREDUCE_CHUNKSTEPS (NCCL_STEPS/2)
+#define ALLGATHER_SLICESTEPS (NCCL_STEPS/4)
+#define ALLGATHER_CHUNKSTEPS (NCCL_STEPS/2)
+#define REDUCESCATTER_SLICESTEPS (NCCL_STEPS/4)
+#define REDUCESCATTER_CHUNKSTEPS (NCCL_STEPS/2)
+#define BROADCAST_SLICESTEPS 1
+#define BROADCAST_CHUNKSTEPS 1
+#define REDUCE_SLICESTEPS 1
+#define REDUCE_CHUNKSTEPS 1
 
 // The code section below describes datatype for input, output matrices and computation between
 // elements in input matrices.
@@ -103,7 +148,7 @@ std::vector<std::vector<std::tuple<int, int, int, int>>> getChunkBlocks
   printf("matrixSize %d nranks * loopSize %d\n", matrixSize, nranks * loopSize);
   for (int userRank = nranks - 1; userRank >= 0; userRank--) {
     chunkBlocks.push_back(std::vector<std::tuple<int, int, int, int>>());
-    int combinedRanks = 1;
+    // int combinedRanks = 1;
     for (int channel = 0; channel < nChannels; channel++) {
       //TODO: following loop only run for once right now.
 
@@ -142,8 +187,13 @@ std::vector<std::vector<std::tuple<int, int, int, int>>> getChunkBlocks
   return chunkBlocks;
 }
 
-void getCutlassGemm(Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half* m1m2, int*& threadBlockToTileMap, int*& tileIdx, int*& tileStatusMap, int*& chunksForTile, int comm_size, int rank)
+#define MAX_CHANNELS 80
+
+#include "header.h"
+void getCutlassGemm(ncclComm_t comm, Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half* m1m2, int*& threadBlockToTileMap, int*& tileIdx, int*& tileStatusMap, int*& chunksForTile, int comm_size, int rank)
 {
+  int ringLength;
+  int nChannels;
   int chunkRows;
   int chunkCols = 512;
   assert(N % chunkCols == 0);
@@ -184,7 +234,7 @@ void getCutlassGemm(Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half
     CUDACHECK(cudaMemset(tileStatusMap, 0, numTiles * 4 * sizeof(int)));
 
     //Create an array of tile order.
-    ShapeMMAThreadBlock shape;
+    // ShapeMMAThreadBlock shape;
     int *tileOrder = new int[numTiles * 2];
 
     int idx = 0;
@@ -203,12 +253,12 @@ void getCutlassGemm(Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half
     
     if (true) {
       idx = 0;
-      int chunk = 0;
+      // int chunk = 0;
 
       std::set<std::pair<int, int>> chunkTBs;
       std::vector<std::pair<int, int>> tileOrderAsPair;
       std::map<int, std::set<int>> tileToChunks;
-          int tilesForChunk = 0;
+          // int tilesForChunk = 0;
 
       for (auto channelChunks: chunkBlocks) {
         for (int channel = 0; channel < channelChunks.size(); channel++) {
@@ -323,312 +373,4 @@ void getCutlassGemm(Gemm& gemm_op, int M, int N, int K, half* m1, half* m2, half
 
     CUDACHECK(cudaMemset(tileIdx, 0, sizeof(int)));
     CUDACHECK(cudaMemset(tileStatusMap, 0, numTiles * 4 * sizeof(int)));
-}
-
-float cutlassGeMM(const int length_m, const int length_n, const int length_k, int rank, 
-                  const std::vector<std::vector<std::tuple<int, int, int, int>>> chunkBlocks) {
-
-  cudaDeviceProp props;
-
-  cudaError_t error = cudaGetDeviceProperties(&props, 0);
-  if (error != cudaSuccess) {
-    std::cerr << "cudaGetDeviceProperties() returned an error: " << cudaGetErrorString(error) << std::endl;
-    return -1;
-  }
-
-  if (props.major != 7) {
-    std::cerr << "Volta Tensor Ops must be run on a machine with compute capability of 70, 72, or 75."
-              << std::endl;
-
-    // Return 0 so tests are considered passing if run on unsupported architectures or CUDA Toolkits.
-    return 0;
-  }
-
-  // Create a tuple of problem size for matrix multiplication
-  cutlass::gemm::GemmCoord problem_size(length_m, length_n, length_k);
-
-  // Initialize tensors using CUTLASS helper functions
-  cutlass::HostTensor<ElementInputA, LayoutInputA> tensor_a(
-      problem_size.mk());      // <- Create matrix A with dimensions M x K
-  cutlass::HostTensor<ElementInputB, LayoutInputB> tensor_b(
-      problem_size.kn());      // <- Create matrix B with dimensions K x N
-  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_c(
-      problem_size.mn());  // <- Create matrix C with dimensions M x N
-  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_d(
-      problem_size.mn());  // <- Create matrix D with dimensions M x N used to store output from
-                               // CUTLASS kernel
-  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_ref_d(
-      problem_size.mn());  // <- Create matrix D with dimensions M x N used to store output from
-                               // reference kernel
-
-  // Fill input and output matrices on host using CUTLASS helper functions
-  if (true) {
-  cutlass::reference::host::TensorFillRandomUniform(
-      tensor_a.host_view(),
-      1,
-      ElementInputA(4),
-      ElementInputA(-4),
-      0);  // <- Fill matrix A on host with uniform-distribution random data
-  } else {
-    cutlass::reference::host::TensorFill(
-      tensor_a.host_view(), ElementInputA(__float2half(1)));
-  }
-  if (true) {
-    cutlass::reference::host::TensorFillRandomUniform(
-      tensor_b.host_view(),
-      1,
-      ElementInputB(4),
-      ElementInputB(-4),
-      0);  // <- Fill matrix B on host with uniform-distribution random data
-  } else {
-    cutlass::reference::host::TensorFill(
-      tensor_b.host_view(), ElementInputB(__float2half(1)));
-  }
-  
-  if (true) {
-    cutlass::reference::host::TensorFillRandomUniform(
-      tensor_c.host_view(),
-      1,
-      ElementOutput(4),
-      ElementOutput(-4),
-      0);  // <- Fill matrix C on host with uniform-distribution random data
-  } else {
-    cutlass::reference::host::TensorFill(
-      tensor_c.host_view(), ElementOutput(__float2half(1)));
-  }
-
-  cutlass::reference::host::TensorFill(
-      tensor_d.host_view());  // <- fill matrix D on host with zeros
-  cutlass::reference::host::TensorFill(
-      tensor_ref_d.host_view());  // <- fill matrix D for reference on host with zeros
-
-  // Copy data from host to GPU
-  tensor_a.sync_device();
-  tensor_b.sync_device();
-  tensor_c.sync_device();
-  tensor_d.sync_device();
-  tensor_ref_d.sync_device();
-
-  // Initialize alpha and beta for dot product computation
-  ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
-  ElementComputeEpilogue beta = ElementComputeEpilogue(0);
-
-  // Split K dimension into 1 partitions
-  int split_k_slices = 1;
-  
-  //Initialize the memory for thread block to tile map.
-  int numTiles = (length_m*length_n)/(ShapeMMAThreadBlock::kMN);
-  int* threadBlockToTileMap;
-  int* tileIdx;
-  int* tileStatusMap;
-
-  CUDACHECK(cudaMalloc(&tileIdx, sizeof(int)));
-  CUDACHECK(cudaMemset(tileIdx, 0, sizeof(int)));
-
-  CUDACHECK(cudaMalloc(&threadBlockToTileMap, numTiles * 2 * sizeof(int)));
-
-  //An array of integers for each tile to indicate if tile is waiting (0) or finished (1)
-  CUDACHECK(cudaMalloc(&tileStatusMap, numTiles * sizeof(int)));
-  CUDACHECK(cudaMemset(tileStatusMap, 0, numTiles * sizeof(int)));
-
-  printf("threadBlockToTileMap %p\n", threadBlockToTileMap);
-  //Create an array of tile order.
-  ShapeMMAThreadBlock shape;
-  int *tileOrder = new int[numTiles * 2];
-
-  int idx = 0;
-  for (int ty = 0; ty < length_n/ShapeMMAThreadBlock::kN; ty++) {
-    for (int tx = 0; tx < length_m/ShapeMMAThreadBlock::kM; tx++) {
-      tileOrder[idx] = tx;
-      tileOrder[idx + 1] = ty;
-      idx += 2;
-    } 
-  }
-
-  int chunkM = 64;
-  int chunkN = 1536;
-
-  if (true) {
-    //Shuffle the ordering to check for correctness
-
-    idx = 0;
-    int chunk = 0;
-
-    std::vector<std::pair<int, int>> chunks;
-
-    // for (int cy = 0; cy < length_m; cy += chunkM) {
-    //   for (int cx = 0; cx < length_n; cx += chunkN) {
-    //     chunks.push_back(std::make_pair(cy, cx));
-    //   }
-    // }
-
-    // std::random_shuffle (chunks.begin(), chunks.end());
-    std::set<std::pair<int, int>> chunkTBs;
-    std::vector<std::pair<int, int>> tileOrderAsPair;
-    
-    int chunkIdx = 0;
-    for (auto channelChunks: chunkBlocks) {
-      for (auto chunk : channelChunks) {
-        int cy = std::get<0>(chunk);
-        int cx = std::get<1>(chunk);
-        int m = std::get<2>(chunk);
-        int n = std::get<3>(chunk);
-
-        //For a chunk get all tiles required to obtain this chunk
-        int startTy = (cy/ ShapeMMAThreadBlock::kM) * ShapeMMAThreadBlock::kM;
-        // printf("cx x cy: %d x %d\n", cy, cx);
-
-        for (int ty = startTy; ty < min(cy + m, length_m); ty += ShapeMMAThreadBlock::kM) {
-          for (int tx = cx; tx < min(cx + n, length_n); tx += ShapeMMAThreadBlock::kN) {
-            if (chunkTBs.count(std::make_pair(ty,tx)) == 0) {
-              chunkTBs.insert(std::make_pair(ty,tx));
-              // printf("%d x %d -> %d x %d\n", cy, cx, ty, tx);
-              tileOrderAsPair.push_back(std::make_pair(tx/ShapeMMAThreadBlock::kN, ty/ShapeMMAThreadBlock::kM));
-            }
-          }
-        }
-      }
-    }
-
-    int _idx = 0;
-    for (int i = 0; i < tileOrderAsPair.size(); i++) {
-      tileOrder[_idx] = tileOrderAsPair[i].second; //Swap row and column because x ("m") is row and y ("n") is column.
-      tileOrder[_idx+1] = tileOrderAsPair[i].first;
-
-      // printf("%d %d\n", tileOrder[_idx], tileOrder[_idx + 1]);
-      _idx += 2;
-      idx += 2;
-    }    
-  }
-
-  // printf("size %d %d\n", idx, (length_m*length_n)/ShapeMMAThreadBlock::kMN*2);
-  CUDACHECK(cudaMemcpy(threadBlockToTileMap, tileOrder, (length_m*length_n)/ShapeMMAThreadBlock::kMN*2*sizeof(int), cudaMemcpyHostToDevice));
-  
-  //The remaining is the map array.
-  //   CUDACHECK(cudaMemset(threadBlockToTileMap + 1, 0, problem_size.m()*problem_size.k()*sizeof(int)));
-
-  // Create a tuple of gemm kernel arguments. This is later passed as arguments to launch
-  // instantiated CUTLASS kernel
-  typename Gemm::Arguments arguments{problem_size,  // <- problem size of matrix multiplication
-                                     tensor_a.device_ref(),  // <- reference to matrix A on device
-                                     tensor_b.device_ref(),  // <- reference to matrix B on device
-                                     tensor_c.device_ref(),  // <- reference to matrix C on device
-                                     tensor_d.device_ref(),  // <- reference to matrix D on device
-                                     0,nullptr,
-                                     tileIdx,
-                                     threadBlockToTileMap,
-                                     tileStatusMap,
-                                     {alpha, beta},          // <- tuple of alpha and beta
-                                     split_k_slices};        // <- k-dimension split factor
-
-  // Using the arguments, query for extra workspace required for matrix multiplication computation
-  size_t workspace_size = Gemm::get_workspace_size(arguments);
-
-  // Allocate workspace memory
-  cutlass::device_memory::allocation<uint8_t> workspace(workspace_size);
-
-  // Instantiate CUTLASS kernel depending on templates
-  Gemm gemm_op;
-
-  // Check the problem size is supported or not 
-  cutlass::Status status = gemm_op.can_implement(arguments);
-  CUTLASS_CHECK(status);
-
-  // Initialize CUTLASS kernel with arguments and workspace pointer
-  status = gemm_op.initialize(arguments, workspace.get());
-  CUTLASS_CHECK(status);
-
-  // First run to check results
-  for (int part = 0; part < 4; part++) {
-    status = gemm_op.runPart(part, 4, 0);
-    CUTLASS_CHECK(status);
-  
-    // Wait for kernels to finish
-    CUDACHECK(cudaDeviceSynchronize());
-  }
-
-
-  // Create instantiation for device reference gemm kernel
-  cutlass::reference::device::Gemm<ElementInputA,
-                                   LayoutInputA,
-                                   ElementInputB,
-                                   LayoutInputB,
-                                   ElementOutput,
-                                   LayoutOutput,
-                                   ElementComputeEpilogue,
-                                   ElementComputeEpilogue>
-      gemm_device;
-  
-  // Launch device reference gemm kernel
-  gemm_device(problem_size,
-              alpha,
-              tensor_a.device_ref(),
-              tensor_b.device_ref(),
-              beta,
-              tensor_c.device_ref(),
-              tensor_ref_d.device_ref());
-
-  // Wait for kernels to finish
-  cudaDeviceSynchronize();
-
-  // Copy output data from CUTLASS and reference kernel to host for comparison
-  tensor_d.sync_host();
-  tensor_ref_d.sync_host();
-
-  // Check if output from CUTLASS kernel and reference kernel are equal or not
-  bool passed = cutlass::reference::host::TensorEquals(
-    tensor_d.host_view(),
-    tensor_ref_d.host_view());
-
-  std::cout << (passed ? "Passed" : "Failed") << std::endl;
-  
-  // Launch initialized CUTLASS kernel
-  float totalTime = 0.0f;
-  CUDACHECK(cudaMemset(tileIdx, 0, sizeof(int)));
-
-  for (int iter = 0; iter < 110; iter++) {
-    // CUDACHECK(cudaMemset(tileIdx, 0, sizeof(int)));
-    CUDACHECK(cudaMemset(tileStatusMap, 0, numTiles*sizeof(int)));
-
-    double t1 = getCurrentTime();
-
-    status = gemm_op(iter);
-    CUTLASS_CHECK(status);
-
-    // Wait for kernels to finish
-    CUDACHECK(cudaDeviceSynchronize());
-    double t2 = getCurrentTime();
-    float elapsedTime2 = (t2 - t1) * 1000.0f;
-    if (iter >= 10)
-        totalTime += elapsedTime2;
-  }
-
-  std::cout << "totalTime with single kernel call " << totalTime << std::endl;
-
-  // // Launch initialized CUTLASS kernel
-  totalTime = 0.0f;
-  CUDACHECK(cudaMemset(tileIdx, 0, sizeof(int)));
-return 0;
-  for (int iter = 0; iter < 110; iter++) {
-    
-    CUDACHECK(cudaMemset(tileStatusMap, 0, numTiles*sizeof(int)));
-
-    double t1 = getCurrentTime();
-
-    // First run to check results
-    for (int i = 0; i < 4; i+=1) {
-      status = gemm_op.runPart(i, 4, iter);
-      CUTLASS_CHECK(status);
-    
-      // Wait for kernels to finish
-      CUDACHECK(cudaDeviceSynchronize());
-    }
-    double t2 = getCurrentTime();
-    float elapsedTime2 = (t2 - t1) * 1000.0f;
-    if (iter >= 10)
-        totalTime += elapsedTime2;
-  }
-
-  std::cout << "totalTime with parts " << totalTime << std::endl;
-  return totalTime;
 }

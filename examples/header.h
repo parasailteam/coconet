@@ -15,6 +15,8 @@
 #include <curand.h>
 
 using namespace cooperative_groups;
+#ifndef __HEADER_H__
+#define __HEADER_H__
 
 #define DIVUP(x,y) ((x) + (y) - 1)/(y)
 
@@ -148,3 +150,5 @@ void cudaMemcpyHalfDevice2FloatHost(float* hostFloatArray, half* deviceHalfArray
 
   delete tmp;
 }
+
+#endif
