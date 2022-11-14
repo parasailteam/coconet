@@ -128,7 +128,7 @@ ncclResult_t ncclAllReduceOverlapMatMul(const void* m1buff, void* m2buff, void* 
     void* syncGlobalMem, size_t count, int M, int N, int K, int realChunkCols, 
     int outerIteration,
     ncclDataType_t datatype, ncclRedOp_t op, ncclComm* comm, cudaStream_t stream) {
-  struct MatMulConfig matMulConfig = {M, N, K, realChunkCols, outerIteration, 24};
+  struct MatMulConfig matMulConfig = {M, N, K, realChunkCols, outerIteration, atoi(getenv("NCCL_MIN_NCHANNELS"))};
 
   struct ncclInfo info = { ncclCollAllReduce, "AllReduce",
     m1buff, m2buff, m1m2buff, syncGlobalMem, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 

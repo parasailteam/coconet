@@ -897,7 +897,7 @@ std::vector<std::vector<std::tuple<int, int, int, int>>> getChunkBlocks
   const ssize_t loopSize = nChannels*(ssize_t)chunkSize;
   maxRealChunkRows = 0;
 
-  printf("matrixSize %d nranks * loopSize %d\n", matrixSize, nranks * loopSize);
+  printf("matrixSize %d chunkSize %d nranks * loopSize %d\n", matrixSize, chunkSize, nranks * loopSize);
   for (int userRank = nranks - 1; userRank >= 0; userRank--) {
     chunkBlocks.push_back(std::vector<std::tuple<int, int, int, int>>());
     int combinedRanks = 1;
@@ -1052,7 +1052,7 @@ int main(int argc, char** argv){
                               /*4.2B is 2304*/ 4096};
     int HIDDEN_DIMENSIONS_12CHANNELS[] = {3072, /*345M Model*/ 3072, /*1.2B Model is 1536*/ 3072, /*2.5B Model is 1920*/ 3072, 
                                           /*4.2B is 2304*/ 3072};
-    int MODEL_PARALLEL_GPUS[] = {4, 16, 16, 16};
+    int MODEL_PARALLEL_GPUS[] = {16, 16, 16, 16};
     float MODEL_PARAMS[] = {8.3, 8.3, 8.3, 8.3, 8.3};
   #else
     int SEQUENCE_LENGTH = 2048;  
@@ -1068,7 +1068,7 @@ int main(int argc, char** argv){
   #endif
 
   for (int model = 0; model < sizeof(HIDDEN_DIMENSIONS)/sizeof(HIDDEN_DIMENSIONS[0]); model++) {
-    for (int matMulType = 0; matMulType < 1; matMulType++) {
+    for (int matMulType = 1; matMulType < 2; matMulType++) {
 
       int M = BATCH_SIZE[model] * SEQUENCE_LENGTH;
       int N = (nChannels%3 == 0) ? HIDDEN_DIMENSIONS_12CHANNELS[model] : HIDDEN_DIMENSIONS[model];
@@ -1077,8 +1077,8 @@ int main(int argc, char** argv){
       if (rank == 0)
         printf("Model Size %.2f B Params , MatMul: [%d, %d] X [%d, %d]\n", MODEL_PARAMS[model], M, K, K, N);
             
-      if (comm_size != MODEL_PARALLEL_GPUS[model])
-       ;// continue;
+      // if (comm_size != MODEL_PARALLEL_GPUS[model])
+      //   continue;
       // Inputs
       half* m1;
       CUDACHECK(cudaMalloc(&m1, M*K * sizeof(half)));

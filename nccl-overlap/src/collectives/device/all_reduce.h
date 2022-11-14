@@ -50,9 +50,8 @@ __device__ void waitForChunkTiles(int rank, volatile half* matrix, int MATMUL_M,
     // if (rank == 0) 
     //   printf("rank %d chunkIndex %d cy %d cx %d m %d n %d numTiles %d totalNumTiles %d combinedChunks %d blockIdx.x %d realChunkRows %d\n", 
     //          rank, chunkIndex, cy, cx, m, n, numTiles, totalNumTiles, combinedChunks, blockIdx.x, realChunkRows);
-    if (threadIdx.x == 0) {
+    if (threadIdx.x == 0)
       while(tileStatus[chunkIndex/combinedChunks] != (iteration + 1)* totalNumTiles);
-    }
   }
 
   __syncwarp();
@@ -107,7 +106,7 @@ __device__ void ncclAllReduceRingKernel(struct CollectiveArgs* args) {
   const int stepSize = channel->buffSize / (sizeof(T)*NCCL_STEPS);
   const int chunkSize = stepSize * ALLREDUCE_CHUNKSTEPS;
   const ssize_t loopSize = args->nChannels*(ssize_t)chunkSize;
-
+  // if (threadIdx.x == 0) printf("chunkSize %d loopSize %ld args->nChannels %d\n", chunkSize, loopSize, args->nChannels);
   // Compute pointers
   // const T ** __restrict__ thisScatteredInput = (const T*)args->ThisScatteredSendBuff;
   // const T ** __restrict__ thisScatteredWeight = (const T*)args->ThisScatteredSendBuff;
@@ -271,7 +270,7 @@ __device__ void ncclAllReduceRingKernel(struct CollectiveArgs* args) {
     __syncwarp();
     __syncthreads();
     if (combinedChunks == args->nChannels) {
-      // g.sync();
+      g.sync();
     }
     
     // if (threadIdx.x == 0) {
