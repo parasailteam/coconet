@@ -1453,7 +1453,6 @@ int main(int argc, char** argv){
               printf("checking results at iter %d %d\n", iter, rank);
             if (!mpiRef(hm1, hm2, hm1m2, M, N, K, comm_size, rank))
               assert(false);
-            return;
           }
         }
 // cudaProfilerStop();

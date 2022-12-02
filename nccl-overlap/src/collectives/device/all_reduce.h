@@ -51,9 +51,9 @@ __device__ void waitForChunkTiles(int rank, volatile half* matrix, int MATMUL_M,
     //   printf("rank %d chunkIndex %d cy %d cx %d m %d n %d numTiles %d totalNumTiles %d combinedChunks %d blockIdx.x %d realChunkRows %d\n", 
     //          rank, chunkIndex, cy, cx, m, n, numTiles, totalNumTiles, combinedChunks, blockIdx.x, realChunkRows);
     if (threadIdx.x == 0) 
-      printf("54: iteration %d totalNumTiles %d\n", iteration, totalNumTiles);
-      while(tileStatus[chunkIndex/combinedChunks] != (iteration + 1)* totalNumTiles);
-      printf("55: tileStatus[chunkIndex/combinedChunks] %d chunkIndex  %d combinedChunks %d\n", tileStatus[chunkIndex/combinedChunks], chunkIndex, combinedChunks);
+      // printf("54: iteration %d totalNumTiles %d\n", iteration, totalNumTiles);
+      while(tileStatus[chunkIndex/combinedChunks] < (iteration + 1)* totalNumTiles);
+      // printf("55: tileStatus[chunkIndex/combinedChunks] %d chunkIndex  %d combinedChunks %d\n", tileStatus[chunkIndex/combinedChunks], chunkIndex, combinedChunks);
   }
 
   __syncwarp();
@@ -197,7 +197,7 @@ __device__ void ncclAllReduceRingKernel(struct CollectiveArgs* args) {
   int chunkStartCol;
 
   if (threadIdx.x == 0 && comm->rank == 0 && blockIdx.x == 0) {
-    printf("chunkSize %d nranks*loopSize %ld\n", chunkSize, nranks*loopSize);
+    // printf("chunkSize %d nranks*loopSize %ld\n", chunkSize, nranks*loopSize);
   }
   auto g = this_grid();
 
